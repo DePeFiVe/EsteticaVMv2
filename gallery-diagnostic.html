@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagnóstico de Galería</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.5;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 10px;
+    }
+    .test-section {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .test-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .test-title {
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+    .status {
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-size: 0.9em;
+    }
+    .status-pending {
+      background-color: #f0f0f0;
+      color: #666;
+    }
+    .status-running {
+      background-color: #fff8e1;
+      color: #856404;
+    }
+    .status-success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .status-error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .log {
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 3px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+    .recommendations {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #e9f5ff;
+      border-left: 4px solid #0d6efd;
+      border-radius: 3px;
+    }
+    .recommendations h3 {
+      margin-top: 0;
+    }
+    .recommendations ul {
+      margin-bottom: 0;
+    }
+    button {
+      background-color: #0d6efd;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #0b5ed7;
+    }
+    button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <h1>Diagnóstico de Galería de Imágenes</h1>
+  
+  <div id="test-connection" class="test-section">
+    <div class="test-header">
+      <div class="test-title">1. Conexión a la Base de Datos</div>
+      <div id="connection-status" class="status status-pending">Pendiente</div>
+    </div>
+    <div id="connection-log" class="log"></div>
+  </div>
+  
+  <div id="test-structure" class="test-section">
+    <div class="test-header">
+      <div class="test-title">2. Estructura de la Tabla gallery_images</div>
+      <div id="structure-status" class="status status-pending">Pendiente</div>
+    </div>
+    <div id="structure-log" class="log"></div>
+  </div>
+  
+  <div id="test-retrieval" class="test-section">
+    <div class="test-header">
+      <div class="test-title">3. Recuperación de Imágenes</div>
+      <div id="retrieval-status" class="status status-pending">Pendiente</div>
+    </div>
+    <div id="retrieval-log" class="log"></div>
+  </div>
+  
+  <div id="test-update" class="test-section">
+    <div class="test-header">
+      <div class="test-title">4. Actualización de Posición</div>
+      <div id="update-status" class="status status-pending">Pendiente</div>
+    </div>
+    <div id="update-log" class="log"></div>
+  </div>
+  
+  <div id="recommendations" class="recommendations" style="display: none;">
+    <h3>Recomendaciones</h3>
+    <ul id="recommendations-list"></ul>
+  </div>
+  
+  <div style="margin-top: 20px;">
+    <button id="run-tests">Ejecutar Pruebas</button>
+    <button id="run-individual" style="margin-left: 10px;">Actualizar Posiciones Individualmente</button>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    // Obtener URL y clave anónima de Supabase desde localStorage (guardados por la aplicación principal)
+    let supabaseUrl = localStorage.getItem('supabase.url');
+    let supabaseAnonKey = localStorage.getItem('supabase.key');
+
+    // Si no están disponibles en localStorage, usar valores predefinidos de las variables de entorno
+    if (!supabaseUrl || !supabaseAnonKey) {
+      // Valores de las variables de entorno (copiados del archivo .env)
+      supabaseUrl = 'https://wkqdzqtqdmbdubcnauoz.supabase.co';
+      supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrcWR6cXRxZG1iZHViY25hdW96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk1Nzc5NTksImV4cCI6MjA1NTE1Mzk1OX0.iaEb5TDBBm_9dvStJWhX7_oSlDUETzuok3qbTWsBFTM';
+      
+      console.log('Usando credenciales predefinidas para Supabase');
+    }
+
+    // Verificar que ahora tenemos las credenciales
+    if (!supabaseUrl || !supabaseAnonKey) {
+      document.body.innerHTML = `
+        <h1>Error de Configuración</h1>
+        <p>No se pudieron encontrar las credenciales de Supabase.</p>
+        <p>Por favor, asegúrate de haber iniciado sesión en la aplicación principal antes de ejecutar este diagnóstico.</p>
+      `;
+      throw new Error('Missing Supabase credentials');
+    }
+
+    // Crear cliente de Supabase
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+
+    // Variables para almacenar resultados de pruebas
+    let testId = null;
+    let hasPositionField = false;
+    let testResults = {
+      connection: false,
+      structure: false,
+      retrieval: false,
+      update: false
+    };
+
+    // Función para actualizar el estado y registro de una prueba
+    function updateTestStatus(test, status, message, data) {
+      const statusElement = document.getElementById(`${test}-status`);
+      const logElement = document.getElementById(`${test}-log`);
+      
+      // Actualizar estado
+      statusElement.className = `status status-${status}`;
+      statusElement.textContent = status === 'running' ? 'Ejecutando...' : 
+                                 status === 'success' ? 'Éxito' : 
+                                 status === 'error' ? 'Error' : 'Pendiente';
+      
+      // Actualizar log
+      if (message) {
+        const timestamp = new Date().toLocaleTimeString();
+        const dataText = data ? JSON.stringify(data, null, 2) : '';
+        logElement.innerHTML += `[${timestamp}] ${message}\n${dataText ? dataText + '\n' : ''}`;
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+    }
+
+    // 1. Prueba de conexión a la base de datos
+    async function testConnection() {
+      updateTestStatus('connection', 'running', 'Probando conexión a la base de datos...');
+      
+      try {
+        const { data, error } = await supabase
+          .from('gallery_images')
+          .select('id')
+          .limit(1000);
+        
+        if (error) throw error;
+        
+        // Count the results manually instead of using aggregate function
+        const count = data ? data.length : 0;
+        
+        updateTestStatus(
+          'connection', 
+          'success', 
+          `Conexión exitosa. Se encontraron ${count} imágenes en la galería.`,
+          { count: count }
+        );
+        
+        testResults.connection = true;
+        return true;
+      } catch (err) {
+        updateTestStatus(
+          'connection', 
+          'error', 
+          `Error de conexión: ${err.message || String(err)}`
+        );
+        return false;
+      }
+    }
+
+    // Función para actualizar posiciones individualmente
+    async function updatePositionsIndividually() {
+      const recommendationsElement = document.getElementById('recommendations');
+      const recommendationsList = document.getElementById('recommendations-list');
+      recommendationsElement.style.display = 'block';
+      recommendationsList.innerHTML = '<li>Ejecutando actualización individual de posiciones...</li>';
+      
+      try {
+        // Obtener todas las imágenes
+        const { data, error } = await supabase
+          .from('gallery_images')
+          .select('id, position')
+          .order('position', { ascending: true, nullsFirst: false });
+        
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+          recommendationsList.innerHTML = '<li>No se encontraron imágenes para actualizar.</li>';
+          return;
+        }
+        
+        // Actualizar posiciones una por una
+        let successCount = 0;
+        let errorCount = 0;
+        
+        for (let i = 0; i < data.length; i++) {
+          const image = data[i];
+          const newPosition = i + 1;
+          
+          try {
+            const { error: updateError } = await supabase
+              .from('gallery_images')
+              .update({ position: newPosition })
+              .eq('id', image.id);
+            
+            if (updateError) {
+              errorCount++;
+              console.error(`Error al actualizar imagen ${image.id}:`, updateError);
+            } else {
+              successCount++;
+            }
+          } catch (updateErr) {
+            errorCount++;
+            console.error(`Error al actualizar imagen ${image.id}:`, updateErr);
+          }
+          
+          // Actualizar progreso
+          if (i % 5 === 0 || i === data.length - 1) {
+            recommendationsList.innerHTML = `
+              <li>Actualizando posiciones: ${i + 1} de ${data.length}</li>
+              <li>Exitosas: ${successCount}</li>
+              <li>Errores: ${errorCount}</li>
+            `;
+          }
+        }
+        
+        // Resultado final
+        recommendationsList.innerHTML = `
+          <li>Actualización completada:</li>
+          <li>Total de imágenes: ${data.length}</li>
+          <li>Actualizaciones exitosas: ${successCount}</li>
+          <li>Errores: ${errorCount}</li>
+          <li>${errorCount === 0 ? '✅ Todas las posiciones se actualizaron correctamente.' : '⚠️ Algunas posiciones no se pudieron actualizar.'}</li>
+        `;
+      } catch (err) {
+        recommendationsList.innerHTML = `<li>Error: ${err.message || String(err)}</li>`;
+      }
+    }
+
+    // Ejecutar todas las pruebas
+    async function runAllTests() {
+      const runButton = document.getElementById('run-tests');
+      runButton.disabled = true;
+      
+      // Restablecer resultados
+      testResults = {
+        connection: false,
+        structure: false,
+        retrieval: false,
+        update: false
+      };
+      
+      // Prueba 1: Conexión a la base de datos
+      const connectionSuccess = await testConnection();
+      if (!connectionSuccess) {
+        runButton.disabled = false;
+        return;
+      }
+      
+      // Prueba 2: Estructura de la tabla
+      const { success: structureSuccess, testId: structureTestId, hasPositionField: hasField } = await verifyTableStructure();
+      testId = structureTestId;
+      hasPositionField = hasField;
+      
+      if (!structureSuccess) {
+        runButton.disabled = false;
+        return;
+      }
+      
+      if (!hasPositionField) {
+        updateTestStatus(
+          'structure',
+          'error',
+          'El campo position falta en la tabla gallery_images. Ejecuta la migración: 20250401000000_add_position_to_gallery_images.sql'
+        );
+        runButton.disabled = false;
+        return;
+      }
+      
+      // Prueba 3: Recuperación de imágenes
+      const { success: retrievalSuccess } = await testImageRetrieval();
+      if (!retrievalSuccess) {
+        runButton.disabled = false;
+        return;
+      }
+      
+      // Prueba 4: Actualización de posición
+      await testPositionUpdate(testId);
+      
+      // Mostrar recomendaciones
+      showRecommendations();
+      
+      runButton.disabled = false;
+    }
+
+    // Mostrar recomendaciones basadas en los resultados
+    function showRecommendations() {
+      const recommendationsElement = document.getElementById('recommendations');
+      const recommendationsList = document.getElementById('recommendations-list');
+      
+      recommendationsElement.style.display = 'block';
+      recommendationsList.innerHTML = '';
+      
+      // Resumen
+      const summaryItem = document.createElement('li');
+      summaryItem.innerHTML = `<strong>Resumen:</strong> Conexión: ${testResults.connection ? '✅' : '❌'}, 
+                              Estructura: ${testResults.structure ? '✅' : '❌'}, 
+                              Recuperación: ${testResults.retrieval ? '✅' : '❌'}, 
+                              Actualización: ${testResults.update ? '✅' : '❌'}`;
+      recommendationsList.appendChild(summaryItem);
+      
+      // Recomendaciones específicas
+      if (!testResults.update) {
+        const recommendations = [
+          'Verifica que el usuario actual tenga privilegios de administrador.',
+          'Revisa las políticas RLS para la tabla gallery_images.',
+          'Verifica que no haya restricciones o triggers en la columna position.',
+          'Intenta actualizar las posiciones una por una en lugar de actualizaciones por lotes.',
+          'Asegúrate de que la migración 20250401000000_add_position_to_gallery_images.sql se haya ejecutado correctamente.'
+        ];
+        
+        recommendations.forEach(rec => {
+          const item = document.createElement('li');
+          item.textContent = rec;
+          recommendationsList.appendChild(item);
+        });
+      } else if (!testResults.retrieval) {
+        const recommendations = [
+          'Verifica que las imágenes tengan servicios asociados válidos.',
+          'Revisa las políticas RLS para la tabla services.',
+          'Comprueba que las relaciones entre gallery_images y services estén correctamente configuradas.'
+        ];
+        
+        recommendations.forEach(rec => {
+          const item = document.createElement('li');
+          item.textContent = rec;
+          recommendationsList.appendChild(item);
+        });
+      }
+    }
+
+    // Event listeners
+    document.getElementById('run-tests').addEventListener('click', runAllTests);
+    document.getElementById('run-individual').addEventListener('click', updatePositionsIndividually);
+  </script>
+</body>
+</html>
+
+    // 2. Verificar estructura de la tabla
+    async function verifyTableStructure() {
+      updateTestStatus('structure', 'running', 'Verificando estructura de la tabla gallery_images...');
+      
+      try {
+        const { data, error } = await supabase
+          .from('gallery_images')
+          .select('id, position')
+          .order('position', { ascending: true })
+          .limit(1);
+        
+        if (error) throw error;
+        
+        testId = data && data.length > 0 ? data[0].id : null;
+        hasPositionField = data && data.length > 0 && 'position' in data[0];
+        
+        if (!hasPositionField) {
+          updateTestStatus(
+            'structure',
+            'error',
+            'El campo position falta en la tabla gallery_images. Ejecuta la migración: 20250401000000_add_position_to_gallery_images.sql'
+          );
+          testResults.structure = false;
+          return { success: false, testId: null, hasPositionField: false };
+        }
+        
+        updateTestStatus(
+          'structure', 
+          'success', 
+          `Estructura de tabla verificada.`,
+          { 
+            hasPositionField,
+            sampleRecord: data && data.length > 0 ? data[0] : 'No se encontraron registros'
+          }
+        );
+        
+        testResults.structure = true;
+        return { success: true, testId, hasPositionField };
+      } catch (err) {
+        updateTestStatus(
+          'structure', 
+          'error', 
+          `Error al verificar estructura: ${err.message || String(err)}`
+        );
+        testResults.structure = false;
+        return { success: false, testId: null, hasPositionField: false };
+      }
+    }
+
+    // 3. Probar recuperación de imágenes
+    async function testImageRetrieval() {
+      updateTestStatus('retrieval', 'running', 'Probando recuperación de imágenes...');
+      
+      try {
+        const { data, error } = await supabase
+          .from('gallery_images')
+          .select(`
+            *,
+            service:services!left (
+              name,
+              category
+            )
+          `)
+          .order('position', { ascending: true, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .limit(5);
+        
+        if (error) throw error;
+        
+        const validImages = data.filter(img => img.service !== null);
+        const invalidImages = data.filter(img => img.service === null);
+        
+        updateTestStatus(
+          'retrieval', 
+          'success', 
+          `Recuperación exitosa: ${data.length} imágenes (${validImages.length} válidas, ${invalidImages.length} con servicio faltante).`,
+          { 
+            sampleValidImage: validImages.length > 0 ? {
+              id: validImages[0].id,
+              image_url: validImages[0].image_url,
+              position: validImages[0].position,
+              service: validImages[0].service
+            } : 'No se encontraron imágenes válidas',
+            invalidImageCount: invalidImages.length
+          }
+        );
+        
+        testResults.retrieval = true;
+        return { success: true, hasValidImages: validImages.length > 0 };
+      } catch (err) {
+        updateTestStatus(
+          'retrieval', 
+          'error', 
+          `Error al recuperar imágenes: ${err.message || String(err)}`
+        );
+        testResults.retrieval = false;
+        return { success: false, hasValidImages: false };
+      }
+    }
+
+    // 4. Probar actualización de posición
+    async function testPositionUpdate(testId) {
+      updateTestStatus('update', 'running', 'Probando actualización de posición...');
+      
+      if (!testId) {
+        updateTestStatus(
+          'update', 
+          'error', 
+          'No se puede probar la actualización: No hay ID de imagen disponible'
+        );
+        testResults.update = false;
+        return false;
+      }
+      
+      try {
+        // Primero obtener la posición actual
+        const { data: currentData, error: fetchError } = await supabase
+          .from('gallery_images')
+          .select('position')
+          .eq('id', testId)
+          .single();
+        
+        if (fetchError) throw fetchError;
+        
+        const currentPosition = currentData?.position || 0;
+        const testPosition = currentPosition + 1000; // Usar un número alto para evitar conflictos
+        
+        // Intentar actualizar la posición
+        const { error: updateError } = await supabase
+          .from('gallery_images')
+          .update({ position: testPosition })
+          .eq('id', testId);
+        
+        if (updateError) throw updateError;
+        
+        // Verificar que la actualización funcionó
+        const { data: verifyData, error: verifyError } = await supabase
+          .from('gallery_images')
+          .select('position')
+          .eq('id', testId)
+          .single();
+        
+        if (verifyError) throw verifyError;
+        
+        const updateSuccessful = verifyData.position === testPosition;
+        
+        // Restaurar la posición original
+        await supabase
+          .from('gallery_images')
+          .update({ position: currentPosition })
+          .eq('id', testId);
+        
+        updateTestStatus(
+          'update', 
+          updateSuccessful ? 'success' : 'error', 
+          updateSuccessful 
+            ? `Actualización exitosa: posición cambiada (${currentPosition} → ${testPosition} → ${currentPosition})`
+            : `La verificación de actualización falló. Esperado: ${testPosition}, obtenido: ${verifyData.position}`,
+          { originalPosition: currentPosition, testPosition, verifiedPosition: verifyData.position }
+        );
+        
+        testResults.update = updateSuccessful;
+        return updateSuccessful;
+      } catch (err) {
+        updateTestStatus(
+          'update', 
+          'error', 
+          `Error al actualizar posición: ${err.message || String(err)}`
+        );
+        testResults.update = false;
+        return false;
