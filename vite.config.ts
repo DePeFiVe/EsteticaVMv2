@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
       host: '0.0.0.0', // Escucha en todas las interfaces
       port: 5173,      // Puerto principal
+      allowedHosts: ['esteticavm.com', 'www.esteticavm.com', '212.85.2.28', 'localhost'],
     },
   optimizeDeps: {
     exclude: ['lucide-react'],
