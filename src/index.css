@@ -1,0 +1,91 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Montserrat:wght@300&display=swap');
+
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+  --primary: #000000;
+  --primary-accent: #EC8FD0;
+}
+
+body {
+  background-color: rgb(249 250 251);
+}
+
+/* Utility classes */
+.text-primary-accent {
+  color: var(--primary-accent);
+}
+
+/* Logo styles */
+.logo-text {
+  font-family: "Cinzel", serif;
+  font-weight: 700;
+  color: black;
+}
+
+.logo-subtext {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 300;
+  color: black;
+}
+
+/* Estética VM specific styles */
+.logo-estetica {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 300;
+  text-transform: uppercase;
+}
+
+.logo-vm {
+  font-family: "Cinzel", serif;
+  font-weight: 700;
+}
+
+/* Calendar customization */
+.rbc-calendar {
+  font-family: sans-serif;
+}
+
+.rbc-toolbar button {
+  background-color: white;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.rbc-toolbar button:hover {
+  background-color: #f9fafb;
+}
+
+.rbc-toolbar button.rbc-active {
+  background-color: var(--primary);
+  color: var(--primary-accent);
+}
+
+.rbc-event {
+  background-color: var(--primary);
+  color: var(--primary-accent);
+}
+
+.rbc-today {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.rbc-off-range-bg {
+  background-color: rgb(249 250 251);
+}
+
+.rbc-header {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.rbc-event.rbc-selected {
+  background-color: rgba(0, 0, 0, 0.9);
+}
+
+.rbc-event-content {
+  font-size: 0.875rem; /* equivalent to text-sm in Tailwind */
+}

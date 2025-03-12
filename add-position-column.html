@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Añadir Columna Position</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.5;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 10px;
+    }
+    .log {
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 3px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+    button {
+      background-color: #0d6efd;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-top: 20px;
+    }
+    button:hover {
+      background-color: #0b5ed7;
+    }
+    button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+    .success {
+      color: #155724;
+      background-color: #d4edda;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 20px;
+    }
+    .error {
+      color: #721c24;
+      background-color: #f8d7da;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Añadir Columna Position a gallery_images</h1>
+  
+  <p>Esta herramienta añadirá la columna <code>position</code> a la tabla <code>gallery_images</code> y actualizará los registros existentes con valores de posición basados en la fecha de creación.</p>
+  
+  <div id="status"></div>
+  
+  <div id="log" class="log"></div>
+  
+  <button id="run-migration">Ejecutar Migración</button>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    // Obtener URL y clave anónima de Supabase desde localStorage (guardados por la aplicación principal)
+    let supabaseUrl = localStorage.getItem('supabase.url');
+    let supabaseAnonKey = localStorage.getItem('supabase.key');
+
+    // Si no están disponibles en localStorage, usar valores predefinidos
+    if (!supabaseUrl || !supabaseAnonKey) {
+      supabaseUrl = 'https://wkqdzqtqdmbdubcnauoz.supabase.co';
+      supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrcWR6cXRxZG1iZHViY25hdW96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk1Nzc5NTksImV4cCI6MjA1NTE1Mzk1OX0.iaEb5TDBBm_9dvStJWhX7_oSlDUETzuok3qbTWsBFTM';
+      
+      log('Usando credenciales predefinidas para Supabase');
+    }
+
+    // Verificar que ahora tenemos las credenciales
+    if (!supabaseUrl || !supabaseAnonKey) {
+      setStatus('error', 'No se pudieron encontrar las credenciales de Supabase.');
+      throw new Error('Missing Supabase credentials');
+    }
+
+    // Crear cliente de Supabase
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true
+      }
+    });
+
+    // Elementos DOM
+    const logElement = document.getElementById('log');
+    const statusElement = document.getElementById('status');
+    const runButton = document.getElementById('run-migration');
+
+    // Función para registrar mensajes
+    function log(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      logElement.innerHTML += `[${timestamp}] ${message}\n`;
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+
+    // Función para actualizar el estado
+    function setStatus(type, message) {
+      statusElement.className = type;
+      statusElement.textContent = message;
+    }
+
+    // Función para ejecutar la migración
+    async function runMigration() {
+      runButton.disabled = true;
+      log('🔍 Iniciando migración de columna position...');
+      
+      try {
+        // 1. Verificar conexión
+        log('Probando conexión a la base de datos...');
+        const { data: testData, error: testError } = await supabase
+          .from('gallery_images')
+          .select('id')
+          .limit(1);
+          
+        if (testError) throw testError;
+        
+        log(`✅ Conexión exitosa. Se encontraron ${testData.length} registros.`);
+        
+        // 2. Verificar si la columna position ya existe
+        log('Verificando si la columna position ya existe...');
+        
+        try {
+          const { data: positionData, error: positionError } = await supabase
+            .from('gallery_images')
+            .select('position')
+            .limit(1);
+          
+          if (positionError && positionError.message.includes('does not exist')) {
+            log('La columna position no existe. Se creará a continuación.');
+          } else {
+            log('✅ La columna position ya existe.');
+            // Continuar con la actualización de posiciones
+          }
+        } catch (err) {
+          log('La columna position no existe. Se creará a continuación.');
+        }
+        
+        // 3. Ejecutar SQL para añadir la columna position
+        log('Añadiendo columna position a la tabla gallery_images...');
+        
+        // Usar SQL directo a través de la función rpc
+        const { error: alterError } = await supabase.rpc('execute_sql', {
+          query: 'ALTER TABLE gallery_images ADD COLUMN IF NOT EXISTS position integer;'
+        });
+        
+        if (alterError) {
+          log(`⚠️ No se pudo ejecutar SQL directamente: ${alterError.message}`);
+          log('Intentando actualizar registros individualmente...');
+        } else {
+          log('✅ Columna position añadida correctamente.');
+        }
+        
+        // 4. Obtener todos los registros y actualizarlos con posiciones
+        log('Obteniendo imágenes para actualizar posiciones...');
+        
+        const { data: allImages, error: fetchError } = await supabase
+          .from('gallery_images')
+          .select('id, created_at')
+          .order('created_at', { ascending: false });
+          
+        if (fetchError) throw fetchError;
+        
+        log(`Encontradas ${allImages.length} imágenes para actualizar.`);
+        
+        // 5. Actualizar cada registro con un valor de posición
+        let successCount = 0;
+        let errorCount = 0;
+        
+        for (let i = 0; i < allImages.length; i++) {
+          log(`Actualizando imagen ${i+1}/${allImages.length}...`);
+          
+          const { error: updateError } = await supabase
+            .from('gallery_images')
+            .update({ position: i + 1 })
+            .eq('id', allImages[i].id);
+            
+          if (updateError) {
+            log(`❌ Error al actualizar imagen ${allImages[i].id}: ${updateError.message}`);
+            errorCount++;
+          } else {
+            successCount++;
+          }
+        }
+        
+        log(`✅ Actualización completada: ${successCount} exitosas, ${errorCount} errores.`);
+        
+        if (successCount > 0) {
+          setStatus('success', '¡Migración completada con éxito! Por favor, actualiza la página de diagnóstico para verificar que todas las pruebas pasan.');
+        } else if (errorCount > 0 && errorCount === allImages.length) {
+          setStatus('error', 'Todas las actualizaciones fallaron. Es posible que la columna position no exista.');
+        } else {
+          setStatus('success', 'Migración parcialmente completada con algunos errores.');
+        }
+      } catch (err) {
+        log(`❌ Error: ${err.message || String(err)}`);
+        setStatus('error', `La migración falló: ${err.message || String(err)}`);
+      } finally {
+        runButton.disabled = false;
+      }
+    }
+
+    // Event listener para el botón
+    runButton.addEventListener('click', runMigration);
+  </script>
+</body>
+</html>
