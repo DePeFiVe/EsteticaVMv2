@@ -72,22 +72,22 @@ const Home = () => {
   const services = [
     {
       title: 'Pestañas',
-      image: new URL('/src/images/Pestanas - Portada web VM.PNG', import.meta.url).href,
+      image: new URL('/src/images/Pestanas - Portada web VM.webp', import.meta.url).href,
       link: '/services/pestañas'
     },
     {
       title: 'Labios',
-      image: new URL('/src/images/Labios - PORTADA WEB VM .PNG', import.meta.url).href,
+      image: new URL('/src/images/Labios - PORTADA WEB VM .webp', import.meta.url).href,
       link: '/services/labios'
     },
     {
       title: 'Tratamientos Faciales',
-      image: new URL('/src/images/Faciales - Portada web VM.PNG', import.meta.url).href,
+      image: new URL('/src/images/Faciales - Portada web VM.webp', import.meta.url).href,
       link: '/services/facial'
     },
     {
       title: 'Cejas',
-      image: new URL('/src/images/Cejas - Portada web VM.PNG', import.meta.url).href,
+      image: new URL('/src/images/Cejas - Portada web VM.webp', import.meta.url).href,
       link: '/services/cejas'
     },
     {
