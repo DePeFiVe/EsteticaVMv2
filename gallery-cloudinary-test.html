@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test de Integración de Cloudinary</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .container {
+      border: 1px solid #ddd;
+      padding: 20px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .result {
+      background-color: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+    .success {
+      color: green;
+    }
+    .error {
+      color: red;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    input[type="file"] {
+      margin: 10px 0;
+    }
+    .progress {
+      height: 20px;
+      background-color: #f5f5f5;
+      border-radius: 5px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background-color: #4CAF50;
+      width: 0%;
+      transition: width 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <h1>Test de Integración de Cloudinary</h1>
+  
+  <div class="container">
+    <h2>Configuración de Cloudinary</h2>
+    <div id="config-status"></div>
+  </div>
+
+  <div class="container">
+    <h2>Subir Imagen de Prueba</h2>
+    <p>Selecciona una imagen para probar la subida a Cloudinary:</p>
+    <input type="file" id="file-input" accept="image/*">
+    <div class="progress">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <button id="upload-btn">Subir Imagen</button>
+    <div id="upload-result" class="result"></div>
+  </div>
+
+  <script>
+    // Verificar la configuración de Cloudinary
+    function checkCloudinaryConfig() {
+      const configStatus = document.getElementById('config-status');
+      
+      // Intentar obtener las variables de entorno
+      // En un entorno real, estas vendrían de import.meta.env
+      // Aquí las obtenemos de localStorage para simular
+      const cloudName = localStorage.getItem('VITE_CLOUDINARY_CLOUD_NAME') || '';
+      const apiKey = localStorage.getItem('VITE_CLOUDINARY_API_KEY') || '';
+      const uploadPreset = localStorage.getItem('VITE_CLOUDINARY_UPLOAD_PRESET') || '';
+      
+      // Mostrar estado de configuración
+      configStatus.innerHTML = `
+        <p><strong>Cloud Name:</strong> ${cloudName ? '<span class="success">✓ Configurado</span>' : '<span class="error">✗ No configurado</span>'}</p>
+        <p><strong>API Key:</strong> ${apiKey ? '<span class="success">✓ Configurado</span>' : '<span class="error">✗ No configurado</span>'}</p>
+        <p><strong>Upload Preset:</strong> ${uploadPreset ? '<span class="success">✓ Configurado</span>' : '<span class="error">✗ No configurado</span>'}</p>
+      `;
+      
+      // Configurar valores para pruebas
+      const configForm = document.createElement('form');
+      configForm.innerHTML = `
+        <h3>Configurar valores para prueba:</h3>
+        <div>
+          <label for="cloud-name">Cloud Name:</label>
+          <input type="text" id="cloud-name" value="${cloudName}">
+        </div>
+        <div>
+          <label for="api-key">API Key:</label>
+          <input type="text" id="api-key" value="${apiKey}">
+        </div>
+        <div>
+          <label for="upload-preset">Upload Preset:</label>
+          <input type="text" id="upload-preset" value="${uploadPreset}">
+        </div>
+        <button type="button" id="save-config">Guardar Configuración</button>
+      `;
+      configStatus.appendChild(configForm);
+      
+      // Guardar configuración en localStorage
+      document.getElementById('save-config').addEventListener('click', () => {
+        const newCloudName = document.getElementById('cloud-name').value;
+        const newApiKey = document.getElementById('api-key').value;
+        const newUploadPreset = document.getElementById('upload-preset').value;
+        
+        localStorage.setItem('VITE_CLOUDINARY_CLOUD_NAME', newCloudName);
+        localStorage.setItem('VITE_CLOUDINARY_API_KEY', newApiKey);
+        localStorage.setItem('VITE_CLOUDINARY_UPLOAD_PRESET', newUploadPreset);
+        
+        alert('Configuración guardada. Recargando...');
+        location.reload();
+      });
+    }
+    
+    // Función para subir imagen a Cloudinary
+    async function uploadToCloudinary(file) {
+      const uploadResult = document.getElementById('upload-result');
+      const progressBar = document.getElementById('progress-bar');
+      
+      try {
+        // Obtener configuración
+        const cloudName = localStorage.getItem('VITE_CLOUDINARY_CLOUD_NAME');
+        const uploadPreset = localStorage.getItem('VITE_CLOUDINARY_UPLOAD_PRESET') || 'subida-directa';
+        
+        if (!cloudName) {
+          throw new Error('Cloud Name no está configurado');
+        }
+        
+        // Crear FormData
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', uploadPreset);
+        formData.append('folder', 'test-gallery');
+        
+        // URL de subida
+        const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+        
+        // Mostrar información de la subida
+        uploadResult.innerHTML = `Subiendo imagen: ${file.name} (${Math.round(file.size / 1024)} KB)\nURL: ${uploadUrl}\nPreset: ${uploadPreset}`;
+        
+        // Simular progreso
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+          progress += 5;
+          if (progress > 90) clearInterval(progressInterval);
+          progressBar.style.width = `${progress}%`;
+        }, 200);
+        
+        // Realizar la subida
+        const response = await fetch(uploadUrl, {
+          method: 'POST',
+          body: formData
+        });
+        
+        clearInterval(progressInterval);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Error ${response.status}: ${errorText}`);
+        }
+        
+        const data = await response.json();
+        progressBar.style.width = '100%';
+        
+        // Mostrar resultado
+        uploadResult.innerHTML = `<span class="success">✓ Subida exitosa</span>\n\nURL: ${data.secure_url}\n\nDetalles:\n${JSON.stringify(data, null, 2)}`;
+        
+        // Mostrar la imagen
+        const imgPreview = document.createElement('div');
+        imgPreview.innerHTML = `<h3>Imagen subida:</h3><img src="${data.secure_url}" style="max-width: 100%; max-height: 300px;">`;
+        uploadResult.appendChild(imgPreview);
+        
+      } catch (error) {
+        progressBar.style.width = '0%';
+        uploadResult.innerHTML = `<span class="error">✗ Error: ${error.message}</span>`;
+        console.error('Error completo:', error);
+      }
+    }
+    
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', () => {
+      checkCloudinaryConfig();
+      
+      // Configurar el botón de subida
+      document.getElementById('upload-btn').addEventListener('click', () => {
+        const fileInput = document.getElementById('file-input');
+        if (fileInput.files.length > 0) {
+          uploadToCloudinary(fileInput.files[0]);
+        } else {
+          alert('Por favor selecciona una imagen primero');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
