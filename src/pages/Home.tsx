@@ -6,6 +6,7 @@ import { preloadImage } from '../lib/cloudinary';
 import AppointmentModal from '../components/AppointmentModal';
 import type { Service } from '../types';
 
+// Lazy load heavy components
 const Home = () => {
   const [packs, setPacks] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -80,27 +81,37 @@ const Home = () => {
     {
       title: 'Pestañas',
       image: new URL('/src/images/Pestanas - Portada web VM.webp', import.meta.url).href,
-      link: '/services/pestañas'
+      link: '/services/pestañas',
+      width: 400,
+      height: 400
     },
     {
       title: 'Labios',
       image: new URL('/src/images/Labios - PORTADA WEB VM .webp', import.meta.url).href,
-      link: '/services/labios'
+      link: '/services/labios',
+      width: 400,
+      height: 400
     },
     {
       title: 'Tratamientos Faciales',
       image: new URL('/src/images/Faciales - Portada web VM.webp', import.meta.url).href,
-      link: '/services/facial'
+      link: '/services/facial',
+      width: 400,
+      height: 400
     },
     {
       title: 'Cejas',
       image: new URL('/src/images/Cejas - Portada web VM.webp', import.meta.url).href,
-      link: '/services/cejas'
+      link: '/services/cejas',
+      width: 400,
+      height: 400
     },
     {
       title: 'Uñas',
       image: 'https://i.pinimg.com/564x/11/97/e8/1197e815c14404726c363e27876f0ef4.jpg',
-      link: '/services/uñas'
+      link: '/services/uñas',
+      width: 400,
+      height: 400
     }
   ];
 
@@ -180,7 +191,7 @@ const Home = () => {
       </div>
 
       {/* Services Section */}
-      <div id="services-section" className="py-16" style={{ backgroundColor: '#D6D4D4' }}>
+      <div id="services-section" className="py-16" style={{ backgroundColor: 'rgb(214, 212, 212)' }}>
         <div className="max-w-7xl mx-auto px-4">
           <h2 className="text-3xl font-semibold text-center mb-12 text-white">
             Nuestros Servicios
@@ -198,8 +209,9 @@ const Home = () => {
                     alt={service.title}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     loading="lazy"
-                    width="400"
-                    height="400"
+                    width={service.width}
+                    height={service.height}
+                    decoding="async"
                   />
                 </div>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-100 group-hover:opacity-90 transition-opacity">
@@ -271,7 +283,8 @@ const Home = () => {
       <div 
         className="py-16 bg-cover bg-center relative"
         style={{
-          backgroundImage: `url("${new URL('/src/images/Background testimonials.jpeg', import.meta.url).href}")`
+          backgroundImage: `url("${new URL('/src/images/Background testimonials.jpeg', import.meta.url).href}")`,
+          backgroundColor: '#f0f0f0' // Fallback color while image loads
         }}
         aria-label="Sección de testimonios"
       >
