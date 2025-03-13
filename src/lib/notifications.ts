@@ -8,10 +8,10 @@ interface NotificationTemplate {
 }
 
 const BUSINESS_INFO = {
-  name: 'Beauty Center',
-  address: 'Av. Principal 1234, Montevideo',
-  maps: 'https://goo.gl/maps/xyz',
-  phone: '099123456'
+  name: 'Estetica VM',
+  address: 'San Jose 1172, Montevideo',
+  maps: 'https://maps.app.goo.gl/1R7Dx4V7nLeHXwQQ8',
+  phone: '092636038'
 };
 
 const TEMPLATES: Record<string, NotificationTemplate> = {
