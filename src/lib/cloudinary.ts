@@ -93,8 +93,12 @@ export const getOptimizedImageUrl = (publicId: string, options: any = {}) => {
   // Default options for WebP optimization
   const defaultOptions = {
     format: 'webp',
-    quality: 'auto',
-    fetch_format: 'auto'
+    quality: 'auto:good',
+    fetch_format: 'auto',
+    dpr: 'auto',
+    width: 'auto',
+    loading: 'lazy',
+    responsive: true
   };
   
   // Merge default options with provided options
@@ -108,4 +112,25 @@ export const getOptimizedImageUrl = (publicId: string, options: any = {}) => {
   // Construct the URL
   const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
   return `https://res.cloudinary.com/${cloudName}/image/upload/${transformations}/${publicId}`;
+};
+
+/**
+ * Preloads an image by creating a link preload tag in the document head
+ * @param {string} imageUrl - The URL of the image to preload
+ * @param {string} as - The type of content being loaded (default: 'image')
+ * @param {string} type - The MIME type of the resource (optional)
+ */
+export const preloadImage = (imageUrl: string, as: string = 'image', type?: string) => {
+  if (typeof document === 'undefined') return; // Skip during SSR
+  
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.href = imageUrl;
+  link.as = as;
+  
+  if (type) {
+    link.type = type;
+  }
+  
+  document.head.appendChild(link);
 };

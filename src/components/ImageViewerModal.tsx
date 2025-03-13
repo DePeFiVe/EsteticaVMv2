@@ -63,6 +63,10 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
             src={image.image_url}
             alt={image.description || image.service.name}
             className="max-h-[80vh] max-w-full object-contain"
+            width="800"
+            height="600"
+            loading="eager"
+            fetchPriority="high"
             onError={(e) => {
               console.error(`Error loading image in modal: ${image.image_url}`);
               e.currentTarget.src = 'https://placehold.co/800x600?text=Image+Not+Found';

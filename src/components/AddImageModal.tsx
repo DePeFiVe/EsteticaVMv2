@@ -36,6 +36,13 @@ const AddImageModal: React.FC<AddImageModalProps> = ({
         setError('Por favor selecciona un archivo de imagen válido');
         return;
       }
+      
+      // Check file size (limit to 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('La imagen es demasiado grande. El tamaño máximo es 5MB');
+        return;
+      }
+      
       setSelectedFile(file);
       setError(null);
     }
@@ -58,7 +65,6 @@ const AddImageModal: React.FC<AddImageModalProps> = ({
 
       // Upload image to Cloudinary
       setUploadProgress(10);
-      console.log('Starting image upload to Cloudinary...');
       
       // Verify Cloudinary configuration
       const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
@@ -70,10 +76,13 @@ const AddImageModal: React.FC<AddImageModalProps> = ({
         folder: 'gallery',
         resource_type: 'image',
         // Add service category as a tag for better organization
-        tags: [selectedCategory !== 'all' ? selectedCategory : 'gallery']
+        tags: [selectedCategory !== 'all' ? selectedCategory : 'gallery'],
+        // Optimize for web delivery
+        format: 'webp',
+        quality: 'auto:good',
+        fetch_format: 'auto'
       });
       
-      console.log('Upload successful:', uploadResult);
       setUploadProgress(70);
 
       // Save to database with the Cloudinary URL
@@ -158,7 +167,7 @@ const AddImageModal: React.FC<AddImageModalProps> = ({
                   {selectedFile ? selectedFile.name : 'Haz clic para seleccionar una imagen'}
                 </span>
                 <span className="text-xs text-gray-400 mt-1">
-                  La imagen se optimizará automáticamente en formato WebP
+                  La imagen se optimizará automáticamente en formato WebP (máx. 5MB)
                 </span>
               </label>
             </div>

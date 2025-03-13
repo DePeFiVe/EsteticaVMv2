@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Star, Clock, Shield, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { preloadImage } from '../lib/cloudinary';
 import AppointmentModal from '../components/AppointmentModal';
 import type { Service } from '../types';
 
@@ -9,6 +10,12 @@ const Home = () => {
   const [packs, setPacks] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
+
+  // Preload hero image on component mount
+  useEffect(() => {
+    const heroImageUrl = new URL('/src/images/Portada Inicio web - VM.webp', import.meta.url).href;
+    preloadImage(heroImageUrl, 'image', 'image/webp');
+  }, []);
 
   useEffect(() => {
     const fetchPacks = async () => {
@@ -105,9 +112,13 @@ const Home = () => {
           {/* Logo container with responsive aspect ratio */}
           <div className="relative w-full max-w-4xl mx-auto pt-[56.25%]">
             <img
-              src={new URL('/src/images/Portada Inicio web - VM.PNG', import.meta.url).href}
+              src={new URL('/src/images/Portada Inicio web - VM.webp', import.meta.url).href}
               alt="Valery Miranda Cosmetóloga"
               className="absolute inset-0 w-full h-full object-cover"
+              fetchPriority="high"
+              width="1200"
+              height="675"
+              decoding="async"
               onError={(e) => {
                 console.error(`Error loading logo image`);
                 e.currentTarget.src = 'https://placehold.co/1200x675?text=Valery+Miranda+Cosmetóloga';
@@ -186,6 +197,9 @@ const Home = () => {
                     src={service.image} 
                     alt={service.title}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    loading="lazy"
+                    width="400"
+                    height="400"
                   />
                 </div>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-100 group-hover:opacity-90 transition-opacity">
@@ -259,6 +273,7 @@ const Home = () => {
         style={{
           backgroundImage: `url("${new URL('/src/images/Background testimonials.jpeg', import.meta.url).href}")`
         }}
+        aria-label="Sección de testimonios"
       >
         <div className="absolute inset-0 bg-black/60"></div>
         <div className="max-w-7xl mx-auto px-4 relative">

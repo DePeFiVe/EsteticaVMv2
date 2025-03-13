@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 import AppointmentModal from '../components/AppointmentModal';
 import { supabase } from '../lib/supabase';
+import { preloadImage } from '../lib/cloudinary';
 import type { Service } from '../types';
 
 const ServicePage = () => {
@@ -13,10 +14,10 @@ const ServicePage = () => {
   const [error, setError] = useState<string | null>(null);
 
   const categoryImages: Record<string, string> = {
-    'pestañas': '/src/images/pestana hero.jpeg',
-    'pestanas': '/src/images/pestana hero.jpeg',
-    'cejas': '/src/images/cejas hero.jpeg',
-    'facial': '/src/images/facial hero.jpeg',
+    'pestañas': new URL('/src/images/pestana hero.jpeg', import.meta.url).href,
+    'pestanas': new URL('/src/images/pestana hero.jpeg', import.meta.url).href,
+    'cejas': new URL('/src/images/cejas hero.jpeg', import.meta.url).href,
+    'facial': new URL('/src/images/facial hero.jpeg', import.meta.url).href,
     'labios': 'https://i.imgur.com/mkzB7dP.jpeg',
     'uñas': 'https://images.unsplash.com/photo-1604654894610-df63bc536371?auto=format&fit=crop&w=1920&q=80',
     'unas': 'https://images.unsplash.com/photo-1604654894610-df63bc536371?auto=format&fit=crop&w=1920&q=80',
@@ -45,6 +46,14 @@ const ServicePage = () => {
     'labios': 'labios',
     'packs': 'packs'
   };
+
+  // Precargar la imagen de la categoría actual
+  useEffect(() => {
+    if (category && categoryImages[category.toLowerCase()]) {
+      const imageUrl = categoryImages[category.toLowerCase()];
+      preloadImage(imageUrl);
+    }
+  }, [category]);
 
   useEffect(() => {
     const fetchServices = async () => {

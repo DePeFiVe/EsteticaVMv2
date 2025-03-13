@@ -5,7 +5,7 @@ import NotificationSettings from './NotificationSettings';
 import NotificationHistory from './NotificationHistory';
 
 interface NotificationStatusProps {
-  appointmentId: string;
+  appointmentId?: string;
   isGuest?: boolean;
   showSettings?: boolean;
   userId?: string;
@@ -26,6 +26,10 @@ const NotificationStatus: React.FC<NotificationStatusProps> = ({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const fetchStatus = React.useCallback(async () => {
+    if (!appointmentId) {
+      setLoading(false);
+      return;
+    }
     const data = await getNotificationStatus(appointmentId, isGuest);
     setStatus(data);
     setLoading(false);
@@ -36,6 +40,7 @@ const NotificationStatus: React.FC<NotificationStatusProps> = ({
   }, [fetchStatus]);
 
   const handleResend = async () => {
+    if (!appointmentId) return;
     setResending(true);
     const success = await resendNotification(appointmentId, isGuest);
     if (success) {
@@ -48,6 +53,39 @@ const NotificationStatus: React.FC<NotificationStatusProps> = ({
     return <div className="text-gray-500">Cargando estado...</div>;
   }
 
+  // If no appointmentId is provided, show a general notification status message
+  if (!appointmentId) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center text-gray-500">
+            <Clock className="h-4 w-4 mr-2" />
+            Estado de notificaciones
+          </div>
+          
+          {showSettings && (
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="ml-4 text-gray-500 hover:text-primary"
+              title="Configurar notificaciones"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {showSettingsModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <NotificationSettings
+              userId={userId}
+              isAdmin={isAdmin}
+              onClose={() => setShowSettingsModal(false)}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">

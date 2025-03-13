@@ -36,15 +36,10 @@ const Appointments = () => {
       return;
     }
 
-    console.log('Usuario autenticado:', user);
-    console.log('ID del usuario:', user.id);
-
     const fetchAppointments = async () => {
       try {
         setLoading(true);
         setError(null);
-
-        console.log('Iniciando consulta de citas para el usuario ID:', user.id);
 
         const { data: appointmentsData, error: appointmentsError } = await supabase
           .from('appointments')
@@ -65,8 +60,6 @@ const Appointments = () => {
           .eq('user_id', user.id)
           .neq('status', 'cancelled')
           .order('date', { ascending: true });
-
-        console.log('Respuesta de Supabase:', { data: appointmentsData, error: appointmentsError });
 
         if (appointmentsError) throw appointmentsError;
         setAppointments(appointmentsData || []);
@@ -200,35 +193,26 @@ const Appointments = () => {
                       {format(new Date(appointment.date), 'HH:mm', { locale: es })}
                     </span>
                   </div>
-                  <div className="flex items-center">
-                    <span className={`px-3 py-1 rounded-sm text-sm ${getStatusColor(appointment.status)}`}>
+                  <div className="mt-2">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
                       {getStatusText(appointment.status)}
                     </span>
                   </div>
-                  {appointment.status === 'confirmed' && (
-                    <div className="mt-2">
-                      <NotificationStatus appointmentId={appointment.id} />
-                    </div>
-                  )}
                 </div>
-
+                
                 <div className="flex items-center space-x-4">
-                  <div className="text-right">
-                    <p className="text-lg font-semibold text-black">
-                      ${appointment.service.price}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {appointment.service.duration} minutos
-                    </p>
+                  <div className="text-xl font-semibold text-black">
+                    ${appointment.service.price}
                   </div>
                   
-                  {appointment.status === 'pending' && (
+                  {appointment.status !== 'cancelled' && (
                     <button
                       onClick={() => handleCancelAppointment(appointment.id)}
-                      className="p-2 text-red-600 hover:text-red-800"
-                      title="Cancelar cita"
+                      className="flex items-center text-red-600 hover:text-red-800 transition-colors"
+                      aria-label="Cancelar cita"
                     >
-                      <X className="h-6 w-6" />
+                      <X className="h-5 w-5 mr-1" />
+                      <span className="hidden sm:inline">Cancelar</span>
                     </button>
                   )}
                 </div>
@@ -236,6 +220,10 @@ const Appointments = () => {
             ))}
           </div>
         )}
+        
+        <div className="mt-12">
+          <NotificationStatus />
+        </div>
       </div>
     </div>
   );
