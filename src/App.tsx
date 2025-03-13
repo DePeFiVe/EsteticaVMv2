@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import About from './pages/About';
@@ -9,6 +10,8 @@ import ServicePage from './pages/ServicePage';
 import Admin from './pages/Admin';
 import Gallery from './pages/Gallery';
 import Appointments from './pages/Appointments';
+
+const HeavyComponent = lazy(() => import('./components/HeavyComponent'));
 
 function App() {
   return (
@@ -25,6 +28,9 @@ function App() {
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/appointments" element={<Appointments />} />
         </Routes>
+        <Suspense fallback={<div>Cargando...</div>}>
+          <HeavyComponent />
+        </Suspense>
       </div>
     </Router>
   );
