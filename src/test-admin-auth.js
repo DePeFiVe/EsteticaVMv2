@@ -18,6 +18,7 @@ const env = Object.fromEntries(
     })
 );
 
+// Crear cliente de Supabase directamente para evitar problemas con importaciones .ts
 const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
 
 async function testAdminAuth() {
@@ -29,7 +30,7 @@ async function testAdminAuth() {
     console.log('\n1. Verificando conexión a Supabase...');
     const { data: healthCheck, error: healthError } = await supabase
       .from('admins')
-      .select('ci');
+      .select('*', { count: 'exact', head: true });
 
     if (healthError) {
       console.log('❌ Error de conexión:', healthError.message);
@@ -80,6 +81,23 @@ async function testAdminAuth() {
       // 4. Probar eliminación de bloqueo
       console.log('\n4. Probando eliminación de bloqueo...');
       try {
+        // Primero verificar que el bloqueo existe
+        const { data: verifyBlock, error: verifyError } = await supabase
+          .from('blocked_times')
+          .select('*')
+          .eq('id', blockData.id)
+          .single();
+
+        if (verifyError) {
+          throw new Error(`Error al verificar bloqueo: ${verifyError.message}`);
+        }
+
+        if (!verifyBlock) {
+          throw new Error('Bloqueo no encontrado');
+        }
+
+        console.log('Bloqueo verificado, procediendo con eliminación...');
+
         const { error: deleteError } = await supabase
           .from('blocked_times')
           .delete()
@@ -88,20 +106,37 @@ async function testAdminAuth() {
         if (deleteError) {
           throw deleteError;
         }
+
+        // Verificar que el bloqueo fue eliminado
+        const { data: checkDelete } = await supabase
+          .from('blocked_times')
+          .select('*')
+          .eq('id', blockData.id)
+          .maybeSingle();
+
+        if (checkDelete) {
+          throw new Error('El bloqueo no fue eliminado correctamente');
+        }
+
         console.log('✅ Bloqueo eliminado exitosamente');
       } catch (err) {
-        console.log('❌ Error al eliminar bloqueo:', err.message);
+        console.log('❌ Error al eliminar bloqueo:', err instanceof Error ? err.message : String(err));
         
         // Intentar limpiar el bloqueo de prueba
         console.log('Intentando limpiar bloqueo usando match...');
         try {
-          await supabase
+          const { error: cleanupError } = await supabase
             .from('blocked_times')
             .delete()
             .match({ reason: 'Test de bloqueo' });
+
+          if (cleanupError) {
+            throw cleanupError;
+          }
+
           console.log('✅ Limpieza alternativa exitosa');
         } catch (cleanupErr) {
-          console.log('⚠️ No se pudo limpiar el bloqueo:', cleanupErr.message);
+          console.log('⚠️ No se pudo limpiar el bloqueo:', cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr));
         }
       }
     }
@@ -116,7 +151,7 @@ async function testAdminAuth() {
       .limit(1);
 
     if (readError) {
-      console.log('❌ Error al leer bloques:', readError.message);
+      console.log('❌ Lectura denegada:', readError.message);
     } else {
       console.log('✅ Lectura permitida');
     }
@@ -133,7 +168,7 @@ async function testAdminAuth() {
       ]);
 
     if (writeError) {
-      console.log('❌ Error al escribir:', writeError.message);
+      console.log('❌ Escritura denegada:', writeError.message);
     } else {
       console.log('✅ Escritura permitida');
       
@@ -145,7 +180,25 @@ async function testAdminAuth() {
     }
 
   } catch (error) {
-    console.error('\n❌ Error durante las pruebas:', error);
+    console.error('\n❌ Error durante las pruebas:', error instanceof Error ? error.message : String(error));
+  } finally {
+    // Cerrar la conexión con Supabase para que el script termine correctamente
+    console.log('\nFinalizando pruebas y cerrando conexión...');
+    try {
+      // Cerrar la sesión de Supabase
+      await supabase.auth.signOut();
+      console.log('✅ Conexión cerrada correctamente');
+      
+      // Forzar la finalización del script después de un breve tiempo
+      // para asegurar que se cierren todas las conexiones pendientes
+      setTimeout(() => {
+        console.log('Pruebas completadas.');
+        process.exit(0);
+      }, 500);
+    } catch (err) {
+      console.error('Error al cerrar la conexión:', err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   }
 }
 

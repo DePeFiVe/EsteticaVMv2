@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Clock, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, Plus, Clock, Trash2, CheckCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { format, addDays, parseISO } from 'date-fns';
+import { format, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { formatInTimeZone } from 'date-fns-tz';
 
 interface TimeSlotManagerProps {
   staffId: string;
@@ -12,11 +13,8 @@ interface TimeSlotManagerProps {
 }
 
 interface TimeSlot {
-  id?: string;
-  day: string;
-  startTime: string;
-  endTime: string;
-  isNew?: boolean;
+  time: string;
+  selected: boolean;
 }
 
 const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
@@ -25,57 +23,64 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
   onClose,
   onSuccess
 }) => {
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [displayDate, setDisplayDate] = useState<string>('');
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    format(new Date(), 'dd/MM/yyyy')
-  );
 
   useEffect(() => {
-    fetchTimeSlots();
-  }, [staffId, selectedDate]);
-
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Convert from yyyy-MM-dd (HTML input format) to dd/MM/yyyy (our display format)
-    const htmlDate = e.target.value;
-    setSelectedDate(htmlDate);
-  };
+    if (selectedDate) {
+      // Create date with explicit timezone to prevent conversion issues
+      const dateToDisplay = new Date(`${selectedDate}T00:00:00`);
+      setDisplayDate(format(dateToDisplay, 'EEEE, d MMMM yyyy', { locale: es }));
+      fetchTimeSlots();
+    }
+  }, [selectedDate, staffId]);
 
   const fetchTimeSlots = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Format date for API query (needs yyyy-MM-dd format)
-      const apiDateFormat = format(new Date(selectedDate), 'yyyy-MM-dd');
-
-      // Get available time slots for the selected date
-      const { data, error: fetchError } = await supabase
+      // Obtener horarios disponibles para esta fecha
+      const { data, error } = await supabase
         .from('blocked_times')
         .select('*')
         .eq('staff_id', staffId)
         .eq('is_available_slot', true)
-        .gte('start_time', `${apiDateFormat}T00:00:00`)
-        .lte('start_time', `${apiDateFormat}T23:59:59`)
-        .order('start_time');
+        .gte('start_time', `${selectedDate}T00:00:00`)
+        .lte('start_time', `${selectedDate}T23:59:59`);
 
-      if (fetchError) throw fetchError;
+      if (error) throw error;
 
-      if (data && data.length > 0) {
-        // Format the time slots
-        const formattedSlots = data.map(slot => ({
-          id: slot.id,
-          day: format(new Date(slot.start_time), 'dd/MM/yyyy'),
-          startTime: format(new Date(slot.start_time), 'HH:mm'),
-          endTime: format(new Date(slot.end_time), 'HH:mm')
-        }));
-        setTimeSlots(formattedSlots);
-      } else {
-        // No slots found for this day
-        setTimeSlots([]);
+      // Generar todos los slots de 30 minutos entre 09:00 y 19:00
+      const allTimeSlots: TimeSlot[] = [];
+      for (let hour = 9; hour < 19; hour++) {
+        for (let minute = 0; minute < 60; minute += 30) {
+          const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+          allTimeSlots.push({
+            time: timeString,
+            selected: false
+          });
+        }
       }
+
+      // Marcar como seleccionados los slots que ya están guardados
+      if (data && data.length > 0) {
+        data.forEach(slot => {
+          const startTime = new Date(slot.start_time);
+          const timeString = format(startTime, 'HH:mm');
+          
+          const existingSlot = allTimeSlots.find(s => s.time === timeString);
+          if (existingSlot) {
+            existingSlot.selected = true;
+          }
+        });
+      }
+
+      setTimeSlots(allTimeSlots);
     } catch (err) {
       console.error('Error fetching time slots:', err);
       setError('Error al cargar los horarios');
@@ -84,32 +89,20 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
     }
   };
 
-  const addTimeSlot = () => {
-    setTimeSlots([
-      ...timeSlots,
-      {
-        day: selectedDate,
-        startTime: '09:00',
-        endTime: '12:00',
-        isNew: true
-      }
-    ]);
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedDate(e.target.value);
   };
 
-  const removeTimeSlot = (index: number) => {
-    const newSlots = [...timeSlots];
-    newSlots.splice(index, 1);
-    setTimeSlots(newSlots);
+  const navigateDay = (days: number) => {
+    const date = new Date(selectedDate);
+    const newDate = days > 0 ? addDays(date, days) : subDays(date, Math.abs(days));
+    setSelectedDate(newDate.toISOString().split('T')[0]);
   };
 
-  const handleTimeChange = (
-    index: number,
-    field: 'startTime' | 'endTime',
-    value: string
-  ) => {
-    const newSlots = [...timeSlots];
-    newSlots[index][field] = value;
-    setTimeSlots(newSlots);
+  const toggleTimeSlot = (index: number) => {
+    setTimeSlots(prev => prev.map((slot, i) => 
+      i === index ? { ...slot, selected: !slot.selected } : slot
+    ));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,73 +111,68 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
     setError(null);
 
     try {
-      // Validate time slots
-      for (const slot of timeSlots) {
-        if (slot.startTime >= slot.endTime) {
-          throw new Error('La hora de fin debe ser posterior a la hora de inicio');
-        }
-      }
-
-      // Format date for API query (needs yyyy-MM-dd format)
-      const apiDateFormat = format(new Date(selectedDate), 'yyyy-MM-dd');
-
-      // First, delete any existing specific slots for this day
+      // Primero eliminar todos los horarios existentes para esta fecha
       const { error: deleteError } = await supabase
         .from('blocked_times')
         .delete()
         .eq('staff_id', staffId)
         .eq('is_available_slot', true)
-        .gte('start_time', `${apiDateFormat}T00:00:00`)
-        .lte('start_time', `${apiDateFormat}T23:59:59`);
+        .gte('start_time', `${selectedDate}T00:00:00`)
+        .lte('start_time', `${selectedDate}T23:59:59`);
 
-      if (deleteError) {
-        console.error('Error deleting existing slots:', deleteError);
-        throw new Error('Error al eliminar horarios existentes');
-      }
+      if (deleteError) throw deleteError;
 
-      // Then, insert the new time slots one by one to avoid batch issues
-      if (timeSlots.length > 0) {
-        for (const slot of timeSlots) {
-          // Create exact date objects to ensure correct timezone handling
-          const startDateTime = new Date(`${apiDateFormat}T${slot.startTime}:00`);
-          const endDateTime = new Date(`${apiDateFormat}T${slot.endTime}:00`);
+      // Luego insertar los nuevos horarios seleccionados
+      const selectedSlots = timeSlots.filter(slot => slot.selected);
+      
+      if (selectedSlots.length > 0) {
+        // Creamos strings ISO con zona horaria explícita para Uruguay (-03:00)
+        // para mantener la hora exacta que seleccionó el usuario
+        const slotsToInsert = selectedSlots.map(slot => {
+          // Creamos objetos Date con la fecha y hora seleccionadas
+          const startDateTime = new Date(`${selectedDate}T${slot.time}:00`);
           
-          const { error: insertError } = await supabase
-            .from('blocked_times')
-            .insert({
-              staff_id: staffId,
-              start_time: startDateTime.toISOString(),
-              end_time: endDateTime.toISOString(),
-              reason: `Horario disponible: ${slot.startTime} - ${slot.endTime}`,
-              is_available_slot: true
-            });
-
-          if (insertError) {
-            console.error('Error inserting time slot:', insertError);
-            throw new Error(`Error al guardar el horario ${slot.startTime} - ${slot.endTime}`);
+          // Calculamos el tiempo de fin sumando 30 minutos al tiempo de inicio
+          const [hours, minutes] = slot.time.split(':').map(Number);
+          let endHours = hours;
+          let endMinutes = minutes + 30;
+          
+          if (endMinutes >= 60) {
+            endHours += 1;
+            endMinutes -= 60;
           }
-        }
+          
+          const endDateTime = new Date(`${selectedDate}T${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}:00`);
+          
+          // Formateamos las fechas con zona horaria explícita para Uruguay (-03:00)
+          // Esto asegura que se guarden exactamente como las seleccionó el usuario
+          const startTimeISO = formatInTimeZone(startDateTime, 'America/Montevideo', "yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+          const endTimeISO = formatInTimeZone(endDateTime, 'America/Montevideo', "yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+          
+          return {
+            staff_id: staffId,
+            start_time: startTimeISO,
+            end_time: endTimeISO,
+            reason: `Horario disponible: ${slot.time}`,
+            is_available_slot: true
+          };
+        });
+
+        const { error: insertError } = await supabase
+          .from('blocked_times')
+          .insert(slotsToInsert);
+
+        if (insertError) throw insertError;
       }
 
       onSuccess();
-      onClose();
     } catch (err) {
       console.error('Error saving time slots:', err);
-      setError(err instanceof Error ? err.message : 'Error al guardar los horarios');
+      setError('Error al guardar los horarios');
     } finally {
       setSaving(false);
     }
   };
-
-  const navigateDay = (days: number) => {
-    const currentDate = new Date(selectedDate);
-    const newDate = addDays(currentDate, days);
-    setSelectedDate(format(newDate, 'dd/MM/yyyy'));
-  };
-
-  // Format the display date correctly
-  const displayDate = selectedDate ? 
-    format(new Date(selectedDate), 'EEEE dd/MM/yyyy', { locale: es }) : '';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -247,14 +235,6 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
               <h3 className="font-medium text-black">
                 {displayDate}
               </h3>
-              <button
-                type="button"
-                onClick={addTimeSlot}
-                className="text-primary hover:text-primary/80 flex items-center text-sm"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Agregar horario
-              </button>
             </div>
 
             {loading ? (
@@ -265,52 +245,35 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
             ) : timeSlots.length === 0 ? (
               <div className="text-center py-4 border border-dashed border-gray-300 rounded-md">
                 <Clock className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-500">No hay horarios específicos para este día</p>
-                <button
-                  type="button"
-                  onClick={addTimeSlot}
-                  className="mt-2 text-primary hover:text-primary/80"
-                >
-                  Agregar horario
-                </button>
+                <p className="text-gray-500">No hay horarios disponibles</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {timeSlots.map((slot, index) => (
-                  <div key={index} className="p-3 border rounded flex items-center">
-                    <div className="flex-1 grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">
-                          Hora de inicio
-                        </label>
-                        <input
-                          type="time"
-                          value={slot.startTime}
-                          onChange={(e) => handleTimeChange(index, 'startTime', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">
-                          Hora de fin
-                        </label>
-                        <input
-                          type="time"
-                          value={slot.endTime}
-                          onChange={(e) => handleTimeChange(index, 'endTime', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeTimeSlot(index)}
-                      className="ml-2 text-red-500 hover:text-red-700"
+              <div className="mt-4">
+                <p className="text-sm text-gray-600 mb-2">Selecciona los horarios disponibles:</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {timeSlots.map((slot, index) => (
+                    <div
+                      key={index}
+                      className="relative"
                     >
-                      <Trash2 className="h-5 w-5" />
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        type="button"
+                        onClick={() => toggleTimeSlot(index)}
+                        className={`
+                          w-full py-2 text-sm border
+                          ${slot.selected 
+                            ? 'border-primary bg-primary text-primary-accent'
+                            : 'border-gray-300 hover:border-primary-accent hover:bg-primary/5'}
+                        `}
+                      >
+                        {slot.time}
+                        {slot.selected && (
+                          <CheckCircle className="h-3 w-3 absolute top-1 right-1 text-primary-accent" />
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </form>

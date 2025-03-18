@@ -1,18 +1,11 @@
 import { supabase } from './supabase';
-import { getWhatsAppConfig, sendWhatsAppMessage, formatWhatsAppParameters, WhatsAppTemplateType } from './whatsapp';
+import { getWhatsAppConfig, sendWhatsAppMessage, formatWhatsAppParameters, WhatsAppTemplateType, BUSINESS_INFO } from './whatsapp';
 
 interface NotificationTemplate {
   title: string;
   body: string;
   type: 'confirmation' | 'reminder' | 'cancellation';
 }
-
-const BUSINESS_INFO = {
-  name: 'Estetica VM',
-  address: 'San Jose 1172, Montevideo',
-  maps: 'https://maps.app.goo.gl/1R7Dx4V7nLeHXwQQ8',
-  phone: '092636038'
-};
 
 const TEMPLATES: Record<string, NotificationTemplate> = {
   confirmation: {

@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { isAdmin } from '../lib/auth';
 import { format, addMinutes, parseISO } from 'date-fns';
-import { Calendar, Clock, CheckCircle, XCircle, BarChart2, CalendarIcon, Lock, X, Users, UserX, MessageSquare } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, XCircle, BarChart2, CalendarIcon, Lock, Users, UserX } from 'lucide-react';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format as formatDate, parse, startOfWeek, getDay } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import Staff from './Admin/Staff';
 import NotificationStatus from '../components/NotificationStatus';
-import { createBlockedTime, deleteBlockedTime } from '../lib/admin';
+// import { deleteBlockedTime } from '../lib/admin'; // Eliminado porque ya no se utiliza
 import TimeSlotManager from '../components/Admin/TimeSlotManager';
-import WhatsAppSettings from '../components/WhatsAppSettings';
-import WhatsAppSimulator from '../components/WhatsAppSimulator';
+// Temporarily comment out until WhatsAppSettings component is created
+// import WhatsAppSettings from '../components/WhatsAppSettings';
+// Temporarily comment out until WhatsAppSimulator component is created
+// import WhatsAppSimulator from '../components/WhatsAppSimulator';
 
 interface AppointmentWithDetails {
   id: string;
@@ -89,17 +91,10 @@ const Admin = () => {
   const [stats, setStats] = useState<ServiceStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'calendar' | 'pending' | 'stats' | 'staff' | 'whatsapp'>('calendar');
+  const [view, setView] = useState<'calendar' | 'pending' | 'stats' | 'staff'>('calendar');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [pendingAppointments, setPendingAppointments] = useState<AppointmentWithDetails[]>([]);
-  const [showBlockModal, setShowBlockModal] = useState(false);
   const [showTimeSlotModal, setShowTimeSlotModal] = useState(false);
-  const [blockForm, setBlockForm] = useState({
-    date: '',
-    startTime: '',
-    endTime: '',
-    reason: ''
-  });
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [selectedStaff, setSelectedStaff] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState<string>('');
@@ -449,50 +444,37 @@ const Admin = () => {
     }
   };
 
-  const handleBlockTime = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      setError(null);
-      setLoading(true);
-
-      // Create exact date objects to ensure correct timezone handling
-      const startDateTime = new Date(`${blockForm.date}T${blockForm.startTime}`);
-      const endDateTime = new Date(`${blockForm.date}T${blockForm.endTime}`);
-
-      if (endDateTime <= startDateTime) {
-        setError('La hora de fin debe ser posterior a la hora de inicio');
-        return;
-      }
-
-      await createBlockedTime(startDateTime, endDateTime, blockForm.reason, selectedStaff);
-
-      setShowBlockModal(false);
-      setBlockForm({
-        date: '',
-        startTime: '',
-        endTime: '',
-        reason: ''
-      });
-
-      // Refresh data
-      fetchData();
-
-    } catch (err) {
-      console.error('Error blocking time:', err);
-      setError(err instanceof Error ? err.message : 'Error al bloquear el horario');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDeleteBlock = async (eventId: string) => {
     try {
-      await deleteBlockedTime(eventId);
+      // Mostrar indicador de carga o deshabilitar botones si es necesario
+      setLoading(true);
+      
+      // Eliminar directamente el horario de la base de datos
+      const { error: deleteError } = await supabase
+        .from('blocked_times')
+        .delete()
+        .eq('id', eventId);
+
+      if (deleteError) {
+        throw new Error(`Error al eliminar el horario: ${deleteError.message}`);
+      }
+      
+      // Actualizar la UI eliminando el evento
       setEvents(prev => prev.filter(event => event.id !== eventId));
+      // Opcional: mostrar mensaje de éxito
+      setError(null);
     } catch (err) {
       console.error('Error deleting blocked time:', err);
-      setError(err instanceof Error ? err.message : 'Error al eliminar el bloqueo');
+      // Mostrar mensaje de error al usuario
+      setError(err instanceof Error ? err.message : 'Error al eliminar el horario');
+    } finally {
+      // Asegurar que el indicador de carga se oculte
+      setLoading(false);
+      
+      // Refrescar los datos después de un breve retraso
+      setTimeout(() => {
+        fetchData();
+      }, 500);
     }
   };
 
@@ -652,17 +634,6 @@ const Admin = () => {
               <Users className="w-4 h-4 mr-2" />
               Personal
             </button>
-            <button
-              onClick={() => setView('whatsapp')}
-              className={`px-4 py-2 flex items-center ${
-                view === 'whatsapp' 
-                  ? 'bg-primary text-primary-accent' 
-                  : 'bg-gray-200 text-black'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4 mr-2" />
-              WhatsApp
-            </button>
           </div>
         </div>
 
@@ -693,13 +664,6 @@ const Admin = () => {
                   <Clock className="w-4 h-4 mr-2" />
                   Gestionar Horarios
                 </button>
-                <button
-                  onClick={() => setShowBlockModal(true)}
-                  className="bg-primary text-primary-accent px-4 py-2 flex items-center"
-                >
-                  <Lock className="w-4 h-4 mr-2" />
-                  Bloquear Horario
-                </button>
               </div>
             </div>
             <BigCalendar
@@ -727,88 +691,6 @@ const Admin = () => {
                 noEventsInRange: "No hay citas en este rango"
               }}
             />
-          </div>
-        )}
-
-        {showBlockModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white max-w-md w-full p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-black">Bloquear Horario</h2>
-                <button
-                  onClick={() => setShowBlockModal(false)}
-                  className="text-black hover:text-primary"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-
-              <form onSubmit={handleBlockTime} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1">
-                    Fecha
-                  </label>
-                  <input
-                    type="date"
-                    value={blockForm.date}
-                    onChange={(e) => setBlockForm({ ...blockForm, date: e.target.value })}
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 border border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1">
-                    Hora de inicio
-                  </label>
-                  <input
-                    type="time"
-                    value={blockForm.startTime}
-                    onChange={(e) => setBlockForm({ ...blockForm, startTime: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1">
-                    Hora de fin
-                  </label>
-                  <input
-                    type="time"
-                    value={blockForm.endTime}
-                    onChange={(e) => setBlockForm({ ...blockForm, endTime: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1">
-                    Motivo
-                  </label>
-                  <input
-                    type="text"
-                    value={blockForm.reason}
-                    onChange={(e) => setBlockForm({ ...blockForm, reason: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary"
-                    required
-                  />
-                </div>
-
-                {error && (
-                  <p className="text-red-600 text-sm">{error}</p>
-                )}
-
-                <button
-                  type="submit"
-                  className="w-full bg-primary text-primary-accent py-2 px-4 hover:bg-black/90"
-                >
-                  Confirmar Bloqueo
-                </button>
-              </form>
-            </div>
           </div>
         )}
 
@@ -984,26 +866,6 @@ const Admin = () => {
         )}
 
         {view === 'staff' && <Staff />}
-
-        {view === 'whatsapp' && (
-          <div className="grid gap-8">
-            <div className="bg-white shadow-lg p-6">
-              <h2 className="text-2xl font-bold text-black mb-6 flex items-center">
-                <MessageSquare className="h-6 w-6 mr-2" />
-                Configuración de WhatsApp
-              </h2>
-              <WhatsAppSettings />
-            </div>
-            
-            <div className="bg-white shadow-lg p-6">
-              <h2 className="text-2xl font-bold text-black mb-6 flex items-center">
-                <MessageSquare className="h-6 w-6 mr-2" />
-                Simulador de WhatsApp
-              </h2>
-              <WhatsAppSimulator />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
