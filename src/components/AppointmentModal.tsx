@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { format, addMinutes } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { es } from 'date-fns/locale';
 import { X, CheckCircle, Bell, AlertCircle, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getCurrentUser } from '../lib/auth';
 import type { Service } from '../types';
 import { validatePhone, formatPhone } from '../utils/validation';
+import debugTimeSlots from '../utils/debugTimeSlots';
 
 interface TimeSlot {
   time: string;
@@ -117,6 +119,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         }
         
         setAvailableMonths(months);
+      } else {
+        setError('No hay horarios disponibles en este momento');
       }
     } catch (err) {
       console.error('Error fetching available months:', err);
@@ -164,6 +168,10 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
       setLoading(true);
       setError(null);
 
+      // Obtener la zona horaria del usuario
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      debugTimeSlots.logTimeZone(timeZone);
+
       // Obtener horario del profesional para ese día
       const { data: schedules, error: schedulesError } = await supabase
         .from('staff_schedules')
@@ -174,11 +182,19 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
       if (schedulesError) throw schedulesError;
 
       const staffSchedule = schedules?.[0];
+      debugTimeSlots.logStaffSchedule(staffSchedule);
+
       if (!staffSchedule) {
         setTimeSlots([]);
         setError('El profesional no atiende este día');
         return;
       }
+
+      // Formatear fechas con zona horaria para consultas
+      const startOfDay = formatInTimeZone(new Date(selectedDate), timeZone, "yyyy-MM-dd'T'00:00:00XXX");
+      const endOfDay = formatInTimeZone(new Date(selectedDate), timeZone, "yyyy-MM-dd'T'23:59:59XXX");
+      
+      debugTimeSlots.logDateRange(startOfDay, endOfDay);
 
       // Verificar si hay horarios específicos disponibles para este día
       const { data: availableSlots, error: availableSlotsError } = await supabase
@@ -186,22 +202,36 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         .select('*')
         .eq('staff_id', selectedStaff)
         .eq('is_available_slot', true)
-        .gte('start_time', `${selectedDate}T00:00:00`)
-        .lte('start_time', `${selectedDate}T23:59:59`);
+        .gte('start_time', startOfDay)
+        .lte('end_time', endOfDay); // Corregido: usar end_time en lugar de start_time
 
       if (availableSlotsError) throw availableSlotsError;
 
-      // Solo usar horarios específicos si existen
+      // Usar horarios específicos si existen, o el horario regular del profesional
       let workingHours = [];
       if (availableSlots && availableSlots.length > 0) {
-        workingHours = availableSlots.map(slot => ({
-          start: new Date(slot.start_time),
-          end: new Date(slot.end_time)
-        }));
+        debugTimeSlots.logAvailableSlots(availableSlots);
+        workingHours = availableSlots.map(slot => {
+          // Crear objetos Date a partir de las fechas ISO
+          const start = new Date(slot.start_time);
+          const end = new Date(slot.end_time);
+          
+          return {
+            start,
+            end
+          };
+        });
       } else {
-        setTimeSlots([]);
-        setError('No hay horarios disponibles para esta fecha');
-        return;
+        // Usar el horario regular del profesional si no hay horarios específicos
+        const startTime = new Date(`${selectedDate}T${staffSchedule.start_time}`);
+        const endTime = new Date(`${selectedDate}T${staffSchedule.end_time}`);
+        
+        debugTimeSlots.logWorkingHoursFallback(startTime, endTime);
+        
+        workingHours = [{
+          start: startTime,
+          end: endTime
+        }];
       }
 
       // Obtener citas existentes y bloques
@@ -215,26 +245,29 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
           .select('date, service:services(duration)')
           .eq('staff_id', selectedStaff)
           .eq('status', 'confirmed')
-          .gte('date', `${selectedDate}T00:00:00`)
-          .lte('date', `${selectedDate}T23:59:59`),
+          .gte('date', startOfDay)
+          .lte('date', endOfDay),
         supabase
           .from('guest_appointments')
           .select('date, service:services(duration)')
           .eq('staff_id', selectedStaff)
           .eq('status', 'confirmed')
-          .gte('date', `${selectedDate}T00:00:00`)
-          .lte('date', `${selectedDate}T23:59:59`),
+          .gte('date', startOfDay)
+          .lte('date', endOfDay),
         supabase
           .from('blocked_times')
           .select('*')
           .eq('is_available_slot', false)
-          .or(`staff_id.is.null,staff_id.eq.${selectedStaff}`)
-          .or(`start_time.lte.${selectedDate}T23:59:59,end_time.gte.${selectedDate}T00:00:00`)
+          .or(`staff_id.is.null,staff_id.eq.${selectedStaff}`) // Usar .or con la sintaxis correcta
+          .gte('start_time', startOfDay)
+          .lte('end_time', endOfDay)
       ]);
 
       if (appError) throw appError;
       if (guestError) throw guestError;
       if (blockedError) throw blockedError;
+      
+      debugTimeSlots.logOccupiedRanges(appointments, guestAppointments, blockedTimes);
 
       // Crear un mapa de horarios ocupados
       const occupiedTimeRanges = [
@@ -265,7 +298,10 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
           // Solo agregar el slot si termina antes del fin del horario
           if (slotEndTime <= hours.end) {
             // Verificar si el horario ya pasó
-            const isInPast = currentTime <= new Date();
+            const now = new Date();
+            const isInPast = new Date(selectedDate).setHours(0,0,0,0) < now.setHours(0,0,0,0) || 
+                          (new Date(selectedDate).setHours(0,0,0,0) === now.setHours(0,0,0,0) && 
+                           currentTime <= now);
             
             // Verificar superposición con horarios ocupados
             const isOverlapping = occupiedTimeRanges.some(range => 
@@ -273,6 +309,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
               (slotEndTime > range.start && slotEndTime <= range.end) ||
               (currentTime <= range.start && slotEndTime >= range.end)
             );
+            
+            debugTimeSlots.logSlotDiscarded(timeString, isInPast, isOverlapping);
             
             // Solo agregar slots disponibles
             if (!isInPast && !isOverlapping) {
@@ -287,6 +325,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         }
       });
 
+      debugTimeSlots.logGeneratedSlots(slots);
       setTimeSlots(slots);
 
       // Si no hay slots disponibles, mostrar mensaje
@@ -334,7 +373,15 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
       }
 
       // Create exact date objects to ensure correct timezone handling
-      const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
+      // Usamos UTC para evitar problemas con zonas horarias
+      const [hours, minutes] = selectedTime.split(':').map(Number);
+      const appointmentDate = new Date(Date.UTC(
+        new Date(selectedDate).getFullYear(),
+        new Date(selectedDate).getMonth(),
+        new Date(selectedDate).getDate(),
+        hours,
+        minutes
+      ));
 
       if (user) {
         const { error: insertError } = await supabase
@@ -376,10 +423,21 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
       setSuccess(true);
     } catch (err) {
       console.error('Error creating appointment:', err);
-      setError(err instanceof Error ? err.message : 'Error al crear la cita');
       
-      if (err instanceof Error && err.message.includes('overlap')) {
-        updateTimeSlots();
+      // Proporcionar mensajes de error más específicos
+      if (err instanceof Error) {
+        if (err.message.includes('overlap')) {
+          setError('La hora seleccionada ya no está disponible. Por favor, elige otra hora.');
+          updateTimeSlots();
+        } else if (err.message.includes('foreign key constraint')) {
+          setError('Error de referencia en la base de datos. Por favor, intenta de nuevo.');
+        } else if (err.message.includes('not-found')) {
+          setError('El servicio o profesional seleccionado ya no está disponible.');
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('Error al crear la cita. Por favor, intenta de nuevo.');
       }
     } finally {
       setLoading(false);
