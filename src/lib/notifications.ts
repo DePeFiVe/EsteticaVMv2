@@ -53,7 +53,7 @@ Puedes reagendar cuando lo desees desde nuestra web o al {phone}.
   }
 };
 
-const SERVICE_INSTRUCTIONS: Record<string, string> = {
+export const SERVICE_INSTRUCTIONS: Record<string, string> = {
   'pestañas': 'No usar maquillaje en el área de los ojos',
   'cejas': 'Evitar depilarse las cejas 2 semanas antes',
   'facial': 'Evitar exposición solar intensa 48h antes',

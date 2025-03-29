@@ -29,6 +29,8 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const timeZone = 'America/Montevideo';
 
   useEffect(() => {
     if (selectedDate) {
@@ -44,20 +46,24 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
       setLoading(true);
       setError(null);
 
+      // Definir el rango de fechas con la zona horaria correcta
+      const startOfDay = formatInTimeZone(new Date(`${selectedDate}T00:00:00`), timeZone, "yyyy-MM-dd'T'00:00:00XXX");
+      const endOfDay = formatInTimeZone(new Date(`${selectedDate}T23:59:59`), timeZone, "yyyy-MM-dd'T'23:59:59XXX");
+
       // Obtener horarios disponibles para esta fecha
       const { data, error } = await supabase
         .from('blocked_times')
         .select('*')
         .eq('staff_id', staffId)
         .eq('is_available_slot', true)
-        .gte('start_time', `${selectedDate}T00:00:00`)
-        .lte('start_time', `${selectedDate}T23:59:59`);
+        .gte('start_time', startOfDay)
+        .lte('start_time', endOfDay);
 
       if (error) throw error;
 
-      // Generar todos los slots de 30 minutos entre 09:00 y 19:00
+      // Generar todos los slots de 30 minutos entre 09:00 y 20:00
       const allTimeSlots: TimeSlot[] = [];
-      for (let hour = 9; hour < 19; hour++) {
+      for (let hour = 9; hour < 20; hour++) {
         for (let minute = 0; minute < 60; minute += 30) {
           const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
           allTimeSlots.push({
@@ -111,14 +117,18 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
     setError(null);
 
     try {
+      // Definir el rango de fechas con la zona horaria correcta
+      const startOfDay = formatInTimeZone(new Date(`${selectedDate}T00:00:00`), timeZone, "yyyy-MM-dd'T'00:00:00XXX");
+      const endOfDay = formatInTimeZone(new Date(`${selectedDate}T23:59:59`), timeZone, "yyyy-MM-dd'T'23:59:59XXX");
+
       // Primero eliminar todos los horarios existentes para esta fecha
       const { error: deleteError } = await supabase
         .from('blocked_times')
         .delete()
         .eq('staff_id', staffId)
         .eq('is_available_slot', true)
-        .gte('start_time', `${selectedDate}T00:00:00`)
-        .lte('start_time', `${selectedDate}T23:59:59`);
+        .gte('start_time', startOfDay)
+        .lte('start_time', endOfDay);
 
       if (deleteError) throw deleteError;
 

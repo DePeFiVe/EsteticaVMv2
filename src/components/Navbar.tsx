@@ -96,6 +96,12 @@ const Navbar = () => {
             >
               Contacto
             </Link>
+            <Link 
+              to="/legal" 
+              className="px-3 py-2 text-black hover:text-primary transition-colors"
+            >
+              Aviso Legal
+            </Link>
             
             {user ? (
               <div className="relative user-menu ml-4">
@@ -211,6 +217,13 @@ const Navbar = () => {
                 className="block text-lg text-black hover:text-primary transition-colors"
               >
                 Contacto
+              </Link>
+              
+              <Link
+                to="/legal"
+                className="block text-lg text-black hover:text-primary transition-colors"
+              >
+                Aviso Legal
               </Link>
 
               {user ? (

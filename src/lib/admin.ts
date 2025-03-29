@@ -4,9 +4,15 @@ import { getCurrentUser } from './auth';
 export async function isUserAdmin(): Promise<boolean> {
   try {
     const user = getCurrentUser();
-    if (!user) return false;
+    console.log('Verificando si el usuario es administrador:', user ? { id: user.id, ci: user.ci } : 'No hay usuario en localStorage');
+    
+    if (!user) {
+      console.log('No se puede verificar permisos de administrador: usuario no encontrado en localStorage');
+      return false;
+    }
 
     // Verificar si el usuario existe en la tabla de admins usando su CI
+    console.log('Consultando tabla de admins para CI:', user.ci);
     const { data: admin, error } = await supabase
       .from('admins')
       .select('ci')
@@ -14,13 +20,20 @@ export async function isUserAdmin(): Promise<boolean> {
       .maybeSingle();
 
     if (error) {
-      console.error('Error checking admin status:', error);
+      console.error('Error al verificar estado de administrador en base de datos:', error);
       return false;
     }
 
-    return !!admin;
+    const isAdmin = !!admin;
+    console.log('Resultado de verificación de administrador:', { 
+      ci: user.ci, 
+      isAdmin, 
+      adminRecord: admin || 'No encontrado en tabla de admins'
+    });
+
+    return isAdmin;
   } catch (error) {
-    console.error('Error checking admin status:', error);
+    console.error('Error al verificar estado de administrador:', error);
     return false;
   }
 }

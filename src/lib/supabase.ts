@@ -47,10 +47,8 @@ export async function checkSupabaseConnection(): Promise<boolean> {
 
 // Función para reiniciar el cliente
 export async function resetSupabaseClient() {
-  // Limpiar cualquier estado o caché del cliente
   supabase.removeAllChannels();
   
-  // Reiniciar la sesión si es necesario
   const { data } = await supabase.auth.getSession();
   if (data.session) {
     await supabase.auth.refreshSession();
@@ -69,4 +67,53 @@ export function handleSupabaseError(error: any): string {
     return error.message;
   }
   return 'Error desconocido. Por favor intenta más tarde.';
+}
+
+// Función para verificar si hay una sesión activa
+export async function getCurrentSession() {
+  console.log('Verificando sesión de Supabase...');
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error('Error al obtener la sesión:', error);
+      return null;
+    }
+    
+    // Corregir el log para mostrar información correcta
+    const localUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') || '{}') : null;
+    console.log('Estado de autenticación detallado:', { 
+      session: session ? "Sesión activa" : "Sin sesión", 
+      user: localUser ? `Usuario: ${localUser.firstName} ${localUser.lastName}` : "Usuario no disponible", 
+      localStorage: localStorage.getItem('user') ? "Datos en localStorage" : "No hay datos en localStorage" 
+    });
+    
+    if (session?.user?.id) {
+      console.log('UUID del usuario autenticado:', session.user.id);
+    }
+    
+    return session;
+  } catch (err) {
+    console.error('Error inesperado al verificar sesión:', err);
+    return null;
+  }
+}
+
+// Función para escuchar cambios en el estado de autenticación
+export function onAuthStateChange(callback: (event: string, session: any) => void) {
+  return supabase.auth.onAuthStateChange((event, session) => {
+    // Corregir el log para mostrar información correcta
+    const localUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') || '{}') : null;
+    console.log('Cambio en estado de autenticación detallado:', { 
+      event, 
+      session: session ? "Sesión activa" : "Sin sesión",
+      user: localUser ? `Usuario: ${localUser.firstName} ${localUser.lastName}` : "Usuario no disponible",
+      localStorage: localStorage.getItem('user') ? "Datos en localStorage" : "No hay datos en localStorage"
+    });
+    
+    try {
+      callback(event, session);
+    } catch (err) {
+      console.error('Error en callback de cambio de autenticación:', err);
+    }
+  });
 }

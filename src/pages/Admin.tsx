@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { isAdmin } from '../lib/auth';
 import { format, addMinutes, parseISO } from 'date-fns';
-import { Calendar, Clock, CheckCircle, XCircle, BarChart2, CalendarIcon, Lock, Users, UserX } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, XCircle, BarChart2, CalendarIcon, Lock, Users, UserX, MessageSquare } from 'lucide-react';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format as formatDate, parse, startOfWeek, getDay } from 'date-fns';
 import { es } from 'date-fns/locale/es';
@@ -12,8 +12,7 @@ import Staff from './Admin/Staff';
 import NotificationStatus from '../components/NotificationStatus';
 // import { deleteBlockedTime } from '../lib/admin'; // Eliminado porque ya no se utiliza
 import TimeSlotManager from '../components/Admin/TimeSlotManager';
-// Temporarily comment out until WhatsAppSettings component is created
-// import WhatsAppSettings from '../components/WhatsAppSettings';
+import WhatsAppSettings from '../components/WhatsAppSettings';
 // Temporarily comment out until WhatsAppSimulator component is created
 // import WhatsAppSimulator from '../components/WhatsAppSimulator';
 
@@ -91,7 +90,7 @@ const Admin = () => {
   const [stats, setStats] = useState<ServiceStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'calendar' | 'pending' | 'stats' | 'staff'>('calendar');
+  const [view, setView] = useState<'calendar' | 'pending' | 'stats' | 'staff' | 'whatsapp'>('calendar');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [pendingAppointments, setPendingAppointments] = useState<AppointmentWithDetails[]>([]);
   const [showTimeSlotModal, setShowTimeSlotModal] = useState(false);
@@ -104,17 +103,25 @@ const Admin = () => {
     month: string;
   }>({ totalAppointments: 0, totalRevenue: 0, month: '' });
   const [availableMonths, setAvailableMonths] = useState<{value: string, label: string}[]>([]);
+  const [showWhatsAppSettings, setShowWhatsAppSettings] = useState(false);
 
   useEffect(() => {
-    // Check if user is admin
-    if (!isAdmin()) {
-      navigate('/');
-      return;
-    }
+    const checkAdminStatus = async () => {
+      console.log('Verificando permisos para acceder al panel de administración...');
+      const adminStatus = await isAdmin();
+      console.log('Resultado de verificación de permisos de administrador:', adminStatus ? 'Acceso permitido' : 'Acceso denegado');
+      
+      if (!adminStatus) {
+        console.log('Redirigiendo a página principal: usuario no es administrador');
+        navigate('/');
+      } else {
+        console.log('Acceso al panel de administración concedido');
+        fetchStaffMembers();
+        generateAvailableMonths();
+      }
+    };
 
-    fetchStaffMembers();
-    generateAvailableMonths();
-    
+    checkAdminStatus();
   }, [navigate]);
 
   useEffect(() => {
@@ -275,11 +282,11 @@ const Admin = () => {
         }))
       ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      setAppointments(allAppointments);
+      setAppointments(allAppointments as AppointmentWithDetails[]);
 
       // Separate pending appointments
       const pending = allAppointments.filter(apt => apt.status === 'pending');
-      setPendingAppointments(pending);
+setPendingAppointments(pending as AppointmentWithDetails[]);
 
       // Create calendar events from confirmed appointments and blocked times
       const confirmedEvents = allAppointments
@@ -339,7 +346,11 @@ const Admin = () => {
           }
         }));
 
-      setEvents([...confirmedEvents, ...blockedEvents, ...availableSlotEvents]);
+      setEvents((prevEvents) => {
+        // Cast events to ensure type compatibility with CalendarEvent[]
+        const newEvents = [...confirmedEvents, ...blockedEvents, ...availableSlotEvents] as CalendarEvent[];
+        return newEvents;
+      });
 
       // Calculate service statistics
       const serviceStats = allAppointments.reduce((acc: ServiceStats[], apt) => {
@@ -634,6 +645,17 @@ const Admin = () => {
               <Users className="w-4 h-4 mr-2" />
               Personal
             </button>
+            <button
+              onClick={() => setView('whatsapp')}
+              className={`px-4 py-2 flex items-center ${
+                view === 'whatsapp' 
+                  ? 'bg-primary text-primary-accent' 
+                  : 'bg-gray-200 text-black'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 mr-2" />
+              WhatsApp
+            </button>
           </div>
         </div>
 
@@ -866,6 +888,21 @@ const Admin = () => {
         )}
 
         {view === 'staff' && <Staff />}
+
+        {view === 'whatsapp' && (
+          <div className="mt-6">
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h2 className="text-xl font-semibold mb-4 flex items-center">
+                <MessageSquare className="h-5 w-5 mr-2" />
+                Configuración de WhatsApp
+              </h2>
+              <p className="mb-4 text-gray-600">
+                Configura los parámetros de Twilio para enviar notificaciones y recordatorios por WhatsApp.
+              </p>
+              <WhatsAppSettings onClose={() => setView('calendar')} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import ServicePage from './pages/ServicePage';
 import Admin from './pages/Admin';
 import Gallery from './pages/Gallery';
 import Appointments from './pages/Appointments';
+import Legal from './pages/Legal';
 
 const HeavyComponent = lazy(() => import('./components/HeavyComponent'));
 
@@ -27,6 +28,7 @@ function App() {
           <Route path="/admin" element={<Admin />} />
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/appointments" element={<Appointments />} />
+          <Route path="/legal" element={<Legal />} />
         </Routes>
         <Suspense fallback={<div>Cargando...</div>}>
           <HeavyComponent />
