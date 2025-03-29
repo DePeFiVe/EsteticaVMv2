@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, addMinutes } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { es } from 'date-fns/locale';
 import { formatInTimeZone } from 'date-fns-tz';
 import { X, CheckCircle, Bell, AlertCircle, User } from 'lucide-react';
@@ -7,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { getCurrentUser } from '../lib/auth';
 import type { Service } from '../types';
 import { validatePhone, formatPhone } from '../utils/validation';
+import debugTimeSlots from '../utils/debugTimeSlots';
 
 // Utilidad para depuración de horarios
 const debugTimeSlots = {
@@ -140,6 +142,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         }
         
         setAvailableMonths(months);
+      } else {
+        setError('No hay horarios disponibles en este momento');
       }
     } catch (err) {
       console.error('Error fetching available months:', err);
@@ -226,6 +230,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         return;
       }
 
+<<<<<<< HEAD
       // Crear el rango de fechas correctamente usando la fecha seleccionada
       // Usamos formatInTimeZone para asegurar que las fechas estén en la zona horaria correcta
       const startOfDay = formatInTimeZone(new Date(`${selectedDate}T00:00:00`), timeZone, "yyyy-MM-dd'T'00:00:00XXX");
@@ -233,6 +238,12 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
       console.log(`[DEBUG-CRITICAL] Rango de fecha con zona horaria ${timeZone}:`);
       console.log(`[DEBUG-CRITICAL] - Inicio del día: ${startOfDay}`);
       console.log(`[DEBUG-CRITICAL] - Fin del día: ${endOfDay}`);
+=======
+      // Formatear fechas con zona horaria para consultas
+      const startOfDay = formatInTimeZone(new Date(selectedDate), timeZone, "yyyy-MM-dd'T'00:00:00XXX");
+      const endOfDay = formatInTimeZone(new Date(selectedDate), timeZone, "yyyy-MM-dd'T'23:59:59XXX");
+      
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
       debugTimeSlots.logDateRange(startOfDay, endOfDay);
 
       // Verificar si hay horarios específicos disponibles para este día
@@ -272,7 +283,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         .eq('staff_id', selectedStaff)
         .eq('is_available_slot', true)
         .gte('start_time', startOfDay)
+<<<<<<< HEAD
         .lte('start_time', endOfDay);
+=======
+        .lte('end_time', endOfDay); // Corregido: usar end_time en lugar de start_time
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
 
       if (availableSlotsError) {
         console.log(`[DEBUG-CRITICAL] Error al buscar horarios disponibles:`, availableSlotsError);
@@ -323,10 +338,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         console.log(`[DEBUG-CRITICAL] Horarios en el rango de fechas: ${dateRangeSlots?.length || 0}`);
       }
 
-      // Solo usar horarios específicos si existen
+      // Usar horarios específicos si existen, o el horario regular del profesional
       let workingHours = [];
       if (availableSlots && availableSlots.length > 0) {
         debugTimeSlots.logAvailableSlots(availableSlots);
+<<<<<<< HEAD
         workingHours = availableSlots.map(slot => ({
           start: new Date(slot.start_time),
           end: new Date(slot.end_time)
@@ -339,6 +355,29 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         setError('No hay horarios disponibles para esta fecha. Por favor contacte al profesional.');
         setLoading(false);
         return;
+=======
+        workingHours = availableSlots.map(slot => {
+          // Crear objetos Date a partir de las fechas ISO
+          const start = new Date(slot.start_time);
+          const end = new Date(slot.end_time);
+          
+          return {
+            start,
+            end
+          };
+        });
+      } else {
+        // Usar el horario regular del profesional si no hay horarios específicos
+        const startTime = new Date(`${selectedDate}T${staffSchedule.start_time}`);
+        const endTime = new Date(`${selectedDate}T${staffSchedule.end_time}`);
+        
+        debugTimeSlots.logWorkingHoursFallback(startTime, endTime);
+        
+        workingHours = [{
+          start: startTime,
+          end: endTime
+        }];
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
       }
 
       // Obtener citas existentes y bloques
@@ -366,6 +405,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
           .from('blocked_times')
           .select('*')
           .eq('is_available_slot', false)
+<<<<<<< HEAD
           .or(`staff_id.is.null,staff_id.eq.${selectedStaff}`)
           .gte('start_time', startOfDay)
           .lte('start_time', endOfDay)
@@ -394,6 +434,18 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
           console.log(`[DEBUG-CRITICAL] Bloque ${index + 1}: staff_id=${block.staff_id}, start=${block.start_time}, end=${block.end_time}, is_available=${block.is_available_slot}`);
         });
       }
+=======
+          .or(`staff_id.is.null,staff_id.eq.${selectedStaff}`) // Usar .or con la sintaxis correcta
+          .gte('start_time', startOfDay)
+          .lte('end_time', endOfDay)
+      ]);
+
+      if (appError) throw appError;
+      if (guestError) throw guestError;
+      if (blockedError) throw blockedError;
+      
+      debugTimeSlots.logOccupiedRanges(appointments, guestAppointments, blockedTimes);
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
 
       // Crear un mapa de horarios ocupados
       const occupiedTimeRanges = [
@@ -469,11 +521,19 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
           
           // Verificar si el slot puede acomodar la duración del servicio
           if (slotEndTime <= hours.end) {
+<<<<<<< HEAD
             // Verificar si el slot está en el pasado, considerando la zona horaria
             // Convertir la hora actual a la misma zona horaria para una comparación correcta
             const nowInTimeZone = new Date();
             const isInPast = currentTime < nowInTimeZone;
             console.log(`[DEBUG-CRITICAL] Comparación de tiempo: currentTime=${currentTime.toISOString()}, nowInTimeZone=${nowInTimeZone.toISOString()}, isInPast=${isInPast}`);
+=======
+            // Verificar si el horario ya pasó
+            const now = new Date();
+            const isInPast = new Date(selectedDate).setHours(0,0,0,0) < now.setHours(0,0,0,0) || 
+                          (new Date(selectedDate).setHours(0,0,0,0) === now.setHours(0,0,0,0) && 
+                           currentTime <= now);
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
             
             // Verificar superposición con horarios ocupados
             const isOverlapping = occupiedTimeRanges.some(range => 
@@ -482,6 +542,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
               (currentTime <= range.start && slotEndTime >= range.end)
             );
             
+<<<<<<< HEAD
             // Verificar que el slot completo está cubierto por horarios disponibles
             // Modificado para permitir que un slot pueda estar cubierto por múltiples bloques consecutivos
             const isFullyCoveredByAvailableSlot = (() => {
@@ -553,6 +614,12 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
             
             // Solo agregar slots disponibles y que estén completamente cubiertos por un horario disponible
             if (!isInPast && !isOverlapping && isFullyCoveredByAvailableSlot) {
+=======
+            debugTimeSlots.logSlotDiscarded(timeString, isInPast, isOverlapping);
+            
+            // Solo agregar slots disponibles
+            if (!isInPast && !isOverlapping) {
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
               slots.push({
                 time: timeString,
                 available: true
@@ -573,12 +640,16 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         }
       });
 
+<<<<<<< HEAD
       console.log(`[DEBUG-CRITICAL] Total de slots generados: ${slots.length}`);
       if (slots.length > 0) {
         console.log(`[DEBUG-CRITICAL] Slots disponibles:`, slots.map(s => s.time).join(', '));
       } else {
         console.log(`[DEBUG-CRITICAL] No se generaron slots disponibles`);
       }
+=======
+      debugTimeSlots.logGeneratedSlots(slots);
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
       setTimeSlots(slots);
 
       // Si no hay slots disponibles, mostrar mensaje
@@ -626,6 +697,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
         throw new Error('Por favor selecciona profesional, fecha y hora');
       }
 
+<<<<<<< HEAD
       // Create exact date objects with America/Montevideo timezone
       // Usamos formatInTimeZone para asegurar que la fecha se cree correctamente en la zona horaria de Montevideo
       const dateTimeString = `${selectedDate}T${selectedTime}:00`;
@@ -665,6 +737,18 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
 
       // Log the data being sent to Supabase
       console.log(`[DEBUG-CRITICAL] Datos de cita a insertar:`, appointmentData);
+=======
+      // Create exact date objects to ensure correct timezone handling
+      // Usamos UTC para evitar problemas con zonas horarias
+      const [hours, minutes] = selectedTime.split(':').map(Number);
+      const appointmentDate = new Date(Date.UTC(
+        new Date(selectedDate).getFullYear(),
+        new Date(selectedDate).getMonth(),
+        new Date(selectedDate).getDate(),
+        hours,
+        minutes
+      ));
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
 
       if (user) {
         const { data, error: insertError } = await supabase
@@ -711,6 +795,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
 
       setSuccess(true);
     } catch (err) {
+<<<<<<< HEAD
       console.error('[DEBUG-CRITICAL] Error creating appointment:', err);
       
       // Extraer mensaje de error más detallado
@@ -742,6 +827,24 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
           errorMessage.toLowerCase().includes('superpone')) {
         console.log('[DEBUG-CRITICAL] Detectado error de superposición, actualizando slots...');
         updateTimeSlots();
+=======
+      console.error('Error creating appointment:', err);
+      
+      // Proporcionar mensajes de error más específicos
+      if (err instanceof Error) {
+        if (err.message.includes('overlap')) {
+          setError('La hora seleccionada ya no está disponible. Por favor, elige otra hora.');
+          updateTimeSlots();
+        } else if (err.message.includes('foreign key constraint')) {
+          setError('Error de referencia en la base de datos. Por favor, intenta de nuevo.');
+        } else if (err.message.includes('not-found')) {
+          setError('El servicio o profesional seleccionado ya no está disponible.');
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('Error al crear la cita. Por favor, intenta de nuevo.');
+>>>>>>> f5354760464868d276b9effee19c29f239190d43
       }
     } finally {
       setLoading(false);

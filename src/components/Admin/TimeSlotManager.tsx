@@ -63,7 +63,7 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
 
       // Generar todos los slots de 30 minutos entre 09:00 y 20:00
       const allTimeSlots: TimeSlot[] = [];
-      for (let hour = 9; hour < 20; hour++) {
+      for (let hour = 12; hour < 20; hour++) {
         for (let minute = 0; minute < 60; minute += 30) {
           const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
           allTimeSlots.push({
