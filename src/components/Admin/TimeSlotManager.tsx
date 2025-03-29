@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, AlertCircle, Plus, Clock, Trash2, CheckCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatInTimeZone } from 'date-fns-tz';
+import { useDebounce } from '../../hooks/useDebounce';
 
 interface TimeSlotManagerProps {
   staffId: string;
@@ -30,6 +31,10 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Aplicamos debounce a las variables para optimizar rendimiento
+  const debouncedStaffId = useDebounce(staffId, 500);
+  const debouncedDate = useDebounce(selectedDate, 500);
+  
   const timeZone = 'America/Montevideo';
 
   useEffect(() => {
@@ -39,9 +44,9 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
       setDisplayDate(format(dateToDisplay, 'EEEE, d MMMM yyyy', { locale: es }));
       fetchTimeSlots();
     }
-  }, [selectedDate, staffId]);
+  }, [debouncedDate, debouncedStaffId]);
 
-  const fetchTimeSlots = async () => {
+  const fetchTimeSlots = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -93,25 +98,29 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedStaffId, debouncedDate, timeZone]);
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedDate(e.target.value);
-  };
+  }, []);
 
-  const navigateDay = (days: number) => {
+  const navigateDay = useCallback((days: number) => {
     const date = new Date(selectedDate);
     const newDate = days > 0 ? addDays(date, days) : subDays(date, Math.abs(days));
     setSelectedDate(newDate.toISOString().split('T')[0]);
-  };
+  }, [selectedDate]);
 
-  const toggleTimeSlot = (index: number) => {
-    setTimeSlots(prev => prev.map((slot, i) => 
-      i === index ? { ...slot, selected: !slot.selected } : slot
-    ));
-  };
+  const toggleTimeSlot = useCallback((index: number) => {
+    setTimeSlots(prev => {
+      // Crear una copia del array para evitar mutar el estado directamente
+      const newSlots = [...prev];
+      // Modificar solo el elemento que cambió
+      newSlots[index] = { ...newSlots[index], selected: !newSlots[index].selected };
+      return newSlots;
+    });
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError(null);
@@ -182,7 +191,7 @@ const TimeSlotManager: React.FC<TimeSlotManagerProps> = ({
     } finally {
       setSaving(false);
     }
-  };
+  }, [debouncedStaffId, debouncedDate, timeSlots, timeZone, onSuccess, selectedDate, staffId]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
