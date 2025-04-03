@@ -164,7 +164,7 @@ const Staff = () => {
         console.error('Error deleting staff services:', staffServicesError);
         throw new Error('Error al eliminar los servicios asociados: ' + staffServicesError.message);
       }
-      console.log('Servicios asociados eliminados:', deletedStaffServices.length);
+      console.log('Servicios asociados eliminados:', deletedStaffServices?.length ?? 0);
 
       // 4. Eliminar el registro del personal
       const { error: staffError } = await supabase

@@ -243,12 +243,19 @@ export async function sendWhatsAppMessage(
 
   try {
     // Verificar si la tabla whatsapp_logs existe
-    const { error: tableCheckError } = await supabase
-      .from('whatsapp_logs')
-      .select('count(*)')
-      .limit(1);
-
-    const whatsappLogsExists = !tableCheckError;
+    let whatsappLogsExists = false;
+    try {
+      const { error: tableCheckError } = await supabase
+        .from('whatsapp_logs')
+        .select('count(*)')
+        .limit(1);
+      
+      whatsappLogsExists = !tableCheckError;
+    } catch (checkError) {
+      console.error('Error al verificar la tabla whatsapp_logs:', checkError);
+      // Continuamos con el proceso aunque no podamos verificar la tabla
+      whatsappLogsExists = false;
+    }
 
     const config = await getWhatsAppConfig();
     
@@ -339,6 +346,7 @@ export async function sendWhatsAppMessage(
             });
         } catch (logError) {
           console.error('Error al registrar error de Twilio en whatsapp_logs:', logError);
+          // No propagamos este error ya que es secundario al error principal de Twilio
         }
       }
       
@@ -378,12 +386,21 @@ export async function sendWhatsAppMessage(
     // Intentar registrar el error en la base de datos
     try {
       // Verificar si la tabla existe antes de intentar insertar
-      const { error: tableCheckError } = await supabase
-        .from('whatsapp_logs')
-        .select('count(*)')
-        .limit(1);
+      let whatsappLogsExists = false;
+      try {
+        const { error: tableCheckError } = await supabase
+          .from('whatsapp_logs')
+          .select('count(*)')
+          .limit(1);
 
-      if (!tableCheckError) {
+        whatsappLogsExists = !tableCheckError;
+      } catch (checkError) {
+        console.error('Error al verificar la tabla whatsapp_logs:', checkError);
+        // Continuamos con el proceso aunque no podamos verificar la tabla
+        whatsappLogsExists = false;
+      }
+
+      if (whatsappLogsExists) {
         await supabase
           .from('whatsapp_logs')
           .insert({
@@ -515,23 +532,32 @@ export async function scheduleAutomaticReminders(appointmentId: string, isGuest:
       return false;
     }
     
-    // Validar que la cita tenga una fecha válida
-    if (!appointmentData || !appointmentData.date) {
-      console.error('La cita no tiene una fecha válida');
+    // Validar que appointmentData sea un objeto válido y tenga una fecha válida
+    if (!appointmentData || typeof appointmentData !== 'object' || !('date' in appointmentData)) {
+      console.error('La cita no tiene una fecha válida o el objeto de cita es inválido');
       return false;
     }
     
     // Validar que la fecha sea un objeto Date válido
     try {
-      const appointmentDate = new Date(appointmentData.date);
+      const appointmentDate = new Date((appointmentData as { date: string }).date);
       if (isNaN(appointmentDate.getTime())) {
-        console.error('La fecha de la cita no es válida:', appointmentData.date);
+        console.error('La fecha de la cita no es válida:', (appointmentData as { date: string }).date);
         return false;
       }
       
-      // Extraer categoría del servicio con validación
-      const serviceCategory = appointmentData.service && typeof appointmentData.service === 'object' ? 
-        (appointmentData.service.category || '') : '';
+      // Extraer categoría del servicio con validación robusta
+      let serviceCategory = '';
+      // Verificar que appointmentData y service existan y sean objetos válidos
+      if (appointmentData && typeof appointmentData === 'object' &&
+          (appointmentData as any).service &&
+          typeof (appointmentData as any).service === 'object' &&
+          (appointmentData as any).service !== null) {
+        // Verificar que category exista y sea un string
+        if (typeof (appointmentData as any).service?.category === 'string') {
+          serviceCategory = (appointmentData as any).service.category;
+        }
+      }
     
       // Asegurar que las horas de recordatorio sean un array válido
       const reminderHours = Array.isArray(config.reminderSettings?.hours) && config.reminderSettings.hours.length > 0
@@ -542,6 +568,12 @@ export async function scheduleAutomaticReminders(appointmentId: string, isGuest:
       if (!appointmentId || !appointmentDate || typeof isGuest !== 'boolean') {
         console.error('Parámetros inválidos para scheduleNotifications:', { appointmentId, appointmentDate, isGuest });
         return false;
+      }
+      
+      // Validación adicional para asegurar que serviceCategory sea un string
+      if (typeof serviceCategory !== 'string') {
+        serviceCategory = '';
+        console.warn('La categoría del servicio no es válida, se usará una cadena vacía');
       }
 
       const result = await scheduleNotifications(
@@ -594,12 +626,20 @@ export function formatWhatsAppParameters(
       : 'Cliente';
   
   // Extraer información del servicio con validación robusta
-  const serviceName = appointmentData.service && typeof appointmentData.service === 'object' && appointmentData.service.name
-    ? appointmentData.service.name 
-    : 'servicio';
-  const serviceCategory = appointmentData.service && typeof appointmentData.service === 'object' && appointmentData.service.category
-    ? appointmentData.service.category 
-    : '';
+  const serviceName = appointmentData.service && 
+    typeof appointmentData.service === 'object' && 
+    appointmentData.service !== null && 
+    typeof appointmentData.service.name === 'string'
+      ? appointmentData.service.name 
+      : 'servicio';
+  
+  // Extraer categoría del servicio con validación más robusta
+  let serviceCategory = '';
+  if (appointmentData.service && typeof appointmentData.service === 'object' && appointmentData.service !== null) {
+    if (typeof appointmentData.service.category === 'string') {
+      serviceCategory = appointmentData.service.category;
+    }
+  }
   
   // Validar y formatear la fecha
   let dateTimeStr = 'fecha no disponible';

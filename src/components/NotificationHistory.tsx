@@ -11,13 +11,15 @@ interface NotificationHistoryProps {
 
 interface Notification {
   id: string;
-  type: string;
-  notification_channel: 'whatsapp' | 'sms' | string;
+  type: 'whatsapp' | 'sms' | string;
   status: 'pending' | 'sent' | 'failed';
   scheduled_for: string;
-  sent_at?: string;
-  error_message?: string;
-  retry_count: number;
+  sent_at?: string | null;
+  error_message?: string | null;
+  retry_count: number; // Cambiado de opcional a requerido
+  appointment_id?: string | null;
+  guest_appointment_id?: string | null;
+  created_at?: string | null;
 }
 
 const NotificationHistory: React.FC<NotificationHistoryProps> = ({
@@ -42,7 +44,16 @@ const NotificationHistory: React.FC<NotificationHistoryProps> = ({
         .order('scheduled_for', { ascending: true });
 
       if (error) throw error;
-      setNotifications(data || []);
+      // Asegurar que todos los registros tengan retry_count
+      const notificationsWithRetryCount = (data || []).map(notification => ({
+        ...notification,
+        retry_count: notification.retry_count ?? 0, // Asignar 0 como valor predeterminado si es null o undefined
+        // Asegurar que status sea uno de los valores permitidos
+        status: (['pending', 'sent', 'failed'].includes(notification.status) 
+          ? notification.status as 'pending' | 'sent' | 'failed'
+          : 'pending') // Valor por defecto si no es válido
+      }));
+      setNotifications(notificationsWithRetryCount);
     } catch (err) {
       console.error('Error fetching notifications:', err);
       setError('Error al cargar las notificaciones');
@@ -111,7 +122,7 @@ const NotificationHistory: React.FC<NotificationHistoryProps> = ({
           className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
         >
           <div className="flex items-center space-x-3">
-            {notification.notification_channel === 'whatsapp' ? (
+            {notification.type === 'whatsapp' ? (
               <WhatsappIcon className="h-5 w-5 text-green-600" />
             ) : (
               <MessageSquare className="h-5 w-5 text-blue-600" />

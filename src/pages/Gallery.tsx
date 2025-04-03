@@ -43,7 +43,22 @@ const Gallery = () => {
   const [cachedImages, setCachedImages] = useLocalStorage<GalleryImage[]>('gallery-images', []);
 // Removed draggedImageId state since it was unused
 
-  const userIsAdmin = isAdmin();
+  const [userIsAdmin, setUserIsAdmin] = useState(false);
+
+  // Verificar si el usuario es administrador
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        const isAdminStatus = await isAdmin();
+        setUserIsAdmin(isAdminStatus);
+      } catch (err) {
+        console.error('Error al verificar estado de administrador:', err);
+        setUserIsAdmin(false);
+      }
+    };
+    
+    checkAdminStatus();
+  }, []);
 
   // Define getCategoryName function before using it
   const getCategoryName = (category: string) => {
@@ -245,9 +260,13 @@ const Gallery = () => {
   
       // Update each image position in the database
       for (const img of imagesToUpdate) {
+        // Actualizar solo la fecha de creación para simular un cambio de posición
+        // ya que la columna 'position' no existe en la tabla
         const { error } = await supabase
           .from('gallery_images')
-          .update({ position: img.position })
+          .update({ 
+            created_at: new Date().toISOString() // Actualizar timestamp para afectar el orden
+          })
           .eq('id', img.id);
   
         if (error) {
@@ -299,9 +318,13 @@ const Gallery = () => {
       handleMoveImage(sourceImageId, targetIndex);
 
       // Update position in database
+      // Actualizar solo la fecha de creación para simular un cambio de posición
+      // ya que la columna 'position' no existe en la tabla
       const { error } = await supabase
         .from('gallery_images')
-        .update({ position: targetIndex + 1 })
+        .update({ 
+          created_at: new Date().toISOString() // Actualizar timestamp para afectar el orden
+        })
         .eq('id', sourceImageId);
 
       if (error) {
@@ -407,7 +430,7 @@ const Gallery = () => {
               className="group relative bg-white shadow-lg hover:shadow-xl transition-all duration-300"
               role="gridcell"
               data-image-id={image.id}
-              draggable={userIsAdmin}
+              draggable={!!userIsAdmin}
               onDragStart={(e) => handleDragStart(e, image.id)}
               onDragEnd={handleDragEnd}
               onDragOver={handleDragOver}

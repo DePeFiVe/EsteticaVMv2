@@ -41,7 +41,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({
         const { data, error } = await supabase
           .from('notification_preferences')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', userId || '')
           .single();
 
         if (error) throw error;
@@ -68,7 +68,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({
       const { error } = await supabase
         .from('notification_preferences')
         .upsert({
-          user_id: userId,
+          user_id: userId || '',
           ...preferences,
           updated_at: new Date().toISOString()
         });

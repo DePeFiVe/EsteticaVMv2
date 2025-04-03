@@ -30,6 +30,20 @@ async function processNotifications() {
     for (const notification of pendingNotifications) {
       try {
         const appointmentId = notification.appointment_id || notification.guest_appointment_id;
+        
+        // Verificar que appointmentId no sea null antes de continuar
+        if (!appointmentId) {
+          console.error(`Error: No se encontró ID de cita para la notificación ${notification.id}`);
+          await supabase
+            .from('notifications')
+            .update({
+              status: 'failed',
+              error_message: 'ID de cita no encontrado o nulo'
+            })
+            .eq('id', notification.id);
+          continue;
+        }
+        
         const isGuest = !!notification.guest_appointment_id;
         const notificationType = notification.type === 'reminder' || notification.type === 'short_reminder' 
           ? 'reminder' 

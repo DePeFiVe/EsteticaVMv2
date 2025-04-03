@@ -4,7 +4,7 @@ import { getWhatsAppConfig, sendWhatsAppMessage, formatWhatsAppParameters, Whats
 interface NotificationTemplate {
   title: string;
   body: string;
-  type: 'confirmation' | 'reminder' | 'cancellation';
+  type: 'confirmation' | 'reminder' | 'short_reminder' | 'cancellation';
 }
 
 const TEMPLATES: Record<string, NotificationTemplate> = {
@@ -28,6 +28,19 @@ Para consultas: {phone}`,
   reminder: {
     title: 'Recordatorio de Cita',
     body: `Recordatorio: Mañana tienes una cita en ${BUSINESS_INFO.name}
+
+Servicio: {service}
+📅 Fecha: {date}
+⏰ Hora: {time}
+📍 {address}
+
+Para confirmar asistencia responde "OK"
+Para reagendar o cancelar: {phone}`,
+    type: 'reminder'
+  },
+  short_reminder: {
+    title: 'Recordatorio de Cita',
+    body: `Recordatorio: En unas horas tienes una cita en ${BUSINESS_INFO.name}
 
 Servicio: {service}
 📅 Fecha: {date}
@@ -103,13 +116,16 @@ export async function resendNotification(appointmentId: string, isGuest: boolean
       throw new Error('Notification not found');
     }
 
+    // Get retry count from notification
+    const retryCount = typeof notification.retry_count === 'number' ? notification.retry_count : 0;
+    
     // Check if we can retry
-    if (notification.retry_count >= MAX_RETRIES) {
+    if (retryCount >= MAX_RETRIES) {
       throw new Error('Maximum retry attempts reached');
     }
 
     // Schedule next retry
-    const nextRetryDelay = RETRY_DELAYS[notification.retry_count] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+    const nextRetryDelay = RETRY_DELAYS[retryCount] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
     const nextRetryAt = new Date();
     nextRetryAt.setMinutes(nextRetryAt.getMinutes() + nextRetryDelay);
 
@@ -118,7 +134,7 @@ export async function resendNotification(appointmentId: string, isGuest: boolean
       .from('notifications')
       .update({
         status: 'pending',
-        retry_count: notification.retry_count + 1,
+        retry_count: retryCount + 1,
         next_retry_at: nextRetryAt.toISOString(),
         error_message: null
       })
@@ -141,6 +157,22 @@ export async function scheduleNotifications(
   customReminders?: number[] // horas antes
 ) {
   try {
+    // Validar parámetros de entrada
+    if (!appointmentId) {
+      console.error('Error: ID de cita no proporcionado');
+      return false;
+    }
+    
+    if (!appointmentDate || isNaN(appointmentDate.getTime())) {
+      console.error('Error: Fecha de cita inválida');
+      return false;
+    }
+    
+    if (!serviceCategory) {
+      console.warn('Advertencia: Categoría de servicio no proporcionada');
+      // Continuamos con una cadena vacía para serviceCategory
+      serviceCategory = '';
+    }
     // Default reminders: 24h and 2h before
     const reminderHours = customReminders || [24, 2];
     
@@ -184,7 +216,7 @@ export async function scheduleNotifications(
 export async function sendNotification(
   appointmentId: string,
   isGuest: boolean = false,
-  notificationType: 'confirmation' | 'reminder' | 'cancellation'
+  notificationType: 'confirmation' | 'reminder' | 'short_reminder' | 'cancellation'
 ) {
   try {
     // Obtener datos de la cita
@@ -215,7 +247,7 @@ export async function sendNotification(
       // Enviar por WhatsApp
       const templateType: WhatsAppTemplateType = 
         notificationType === 'confirmation' ? 'appointment_confirmation' :
-        notificationType === 'reminder' ? 'appointment_reminder' : 'appointment_cancellation';
+        notificationType === 'reminder' || notificationType === 'short_reminder' ? 'appointment_reminder' : 'appointment_cancellation';
       
       const parameters = formatWhatsAppParameters(appointmentData, templateType);
       

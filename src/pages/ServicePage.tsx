@@ -76,7 +76,7 @@ const ServicePage = () => {
         const { data, error: supabaseError } = await supabase
           .from('services')
           .select('*')
-          .eq('category', normalizedCategory)
+          .eq('category', normalizedCategory as string)
           .order('price', { ascending: false });
 
         if (supabaseError) {

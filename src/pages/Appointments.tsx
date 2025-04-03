@@ -62,7 +62,7 @@ const Appointments = () => {
           .order('date', { ascending: true });
 
         if (appointmentsError) throw appointmentsError;
-        setAppointments(appointmentsData || []);
+        setAppointments((appointmentsData?.filter(appointment => appointment.staff !== null) as AppointmentWithService[]) || []);
       } catch (err) {
         console.error('Error fetching appointments:', err);
         setError('Error al cargar las citas. Por favor, intenta de nuevo más tarde.');

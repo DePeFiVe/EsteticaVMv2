@@ -7,9 +7,21 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [showServices, setShowServices] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [userIsAdmin, setUserIsAdmin] = useState(false);
   const user = getCurrentUser();
-  const userIsAdmin = isAdmin();
   const location = useLocation();
+  
+  // Cargar el estado de administrador cuando el componente se monte
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (user) {
+        const adminStatus = await isAdmin();
+        setUserIsAdmin(adminStatus);
+      }
+    };
+    
+    checkAdminStatus();
+  }, [user]);
 
   const services = [
     'Cejas',

@@ -3,7 +3,7 @@ export interface Service {
   name: string;
   duration: number;
   price: number;
-  description: string;
+  description: string | null;
   category: string;
 }
 
@@ -130,6 +130,53 @@ export interface Database {
           phone?: string;
           date?: string;
           status?: string;
+          created_at?: string;
+        };
+      };
+      notifications: {
+        Row: {
+          id: string;
+          appointment_id?: string;
+          guest_appointment_id?: string;
+          type: string;
+          notification_channel?: string;
+          status: string;
+          scheduled_for: string;
+          sent_at?: string;
+          error_message?: string;
+          service_instructions?: string;
+          retry_count: number;
+          next_retry_at?: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          appointment_id?: string;
+          guest_appointment_id?: string;
+          type: string;
+          notification_channel?: string;
+          status: string;
+          scheduled_for: string;
+          sent_at?: string;
+          error_message?: string;
+          service_instructions?: string;
+          retry_count?: number;
+          next_retry_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          appointment_id?: string;
+          guest_appointment_id?: string;
+          type?: string;
+          notification_channel?: string;
+          status?: string;
+          scheduled_for?: string;
+          sent_at?: string;
+          error_message?: string;
+          service_instructions?: string;
+          retry_count?: number;
+          next_retry_at?: string;
           created_at?: string;
         };
       };

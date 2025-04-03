@@ -72,7 +72,8 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, selectedStaff
         .eq('staff_id', staffId);
 
       if (error) throw error;
-      setSelectedServices(data.map(item => item.service_id));
+      // Filter out any null values to ensure we only have strings
+      setSelectedServices(data.map(item => item.service_id).filter((id): id is string => id !== null));
     } catch (err) {
       console.error('Error fetching staff services:', err);
       setError('Error al cargar los servicios del profesional');
@@ -87,7 +88,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, selectedStaff
     try {
       let staffId = selectedStaff?.id;
 
-      if (selectedStaff) {
+      if (selectedStaff && staffId) {
         // Update existing staff
         const { error: updateError } = await supabase
           .from('staff')
