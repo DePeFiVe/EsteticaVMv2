@@ -8,6 +8,7 @@
 import { SupabaseClient , createClient } from '@supabase/supabase-js';
 import { PostgrestFilterBuilder, PostgrestQueryBuilder } from '@supabase/postgrest-js';
 import type { Database } from '../types/database.types';
+import { GenericTable, GenericSchema } from '@supabase/supabase-js/dist/module/lib/types';
 
 /**
  * Tipo que extiende cualquier constructor de consulta de Supabase con métodos para establecer cabeceras
@@ -32,7 +33,11 @@ type WithHeaders<T> = T & {
 /**
  * Tipo específico para consultas de filtrado de Supabase con soporte para cabeceras
  */
-type SupabaseQueryWithHeaders<TSchema, TRow, TResult> = PostgrestFilterBuilder<TSchema, TRow, TResult> & {
+type SupabaseQueryWithHeaders<
+  TSchema extends GenericSchema,
+  TRow extends GenericTable,
+  TResult
+> = PostgrestFilterBuilder<TSchema, TRow, TResult> & {
   setHeader: (name: string, value: string) => SupabaseQueryWithHeaders<TSchema, TRow, TResult>;
   setHeaders: (headers: Record<string, string>) => SupabaseQueryWithHeaders<TSchema, TRow, TResult>;
 };
@@ -40,7 +45,9 @@ type SupabaseQueryWithHeaders<TSchema, TRow, TResult> = PostgrestFilterBuilder<T
 /**
  * Tipo para consultas de Supabase con soporte para cabeceras
  */
-type SupabaseQueryBuilder<T extends keyof Database['public']['Tables'] | keyof Database['public']['Views']> = PostgrestQueryBuilder<Database['public'], T> & {
+type SupabaseQueryBuilder<
+  T extends Database['public']['Tables'][keyof Database['public']['Tables']] | Database['public']['Views'][keyof Database['public']['Views']]
+> = PostgrestQueryBuilder<Database['public'], T> & {
   setHeader: (name: string, value: string) => SupabaseQueryBuilder<T>;
   setHeaders: (headers: Record<string, string>) => SupabaseQueryBuilder<T>;
 };
@@ -49,12 +56,15 @@ type SupabaseQueryBuilder<T extends keyof Database['public']['Tables'] | keyof D
  * Extiende los métodos de consulta de Supabase para incluir funcionalidad de cabeceras personalizadas
  * @param supabase Cliente Supabase a extender
  */
-export function extendSupabaseWithHeaders(supabase: SupabaseClient<Database>) {
+export function extendSupabaseWithHeaders(
+  supabase: SupabaseClient<Database>,
+  defaultHeaders: Record<string, string> = {}
+) {
   const originalFrom = supabase.from.bind(supabase);
 
   supabase.from = function<T extends keyof Database['public']['Tables'] | keyof Database['public']['Views']>(table: T) {
     const query = originalFrom(table);
-    const customHeaders: Record<string, string> = {};
+    const customHeaders: Record<string, string> = { ...defaultHeaders };
 
     const applyHeaders = (options: RequestInit = {}): RequestInit => {
       const headers = new Headers(options.headers || {});
@@ -79,9 +89,9 @@ export function extendSupabaseWithHeaders(supabase: SupabaseClient<Database>) {
 
     const methodsToWrap = ['select', 'insert', 'update', 'upsert', 'delete'] as const;
     methodsToWrap.forEach((method) => {
-      const originalMethod = query[method].bind(query);
+      const originalMethod = query[method] as (...args: any[]) => any;
       query[method] = function (...args: any[]) {
-        const result = originalMethod(...args);
+        const result = originalMethod(...args) as PostgrestFilterBuilder<any, any, any>;
         return addHeaderMethods(result);
       };
     });

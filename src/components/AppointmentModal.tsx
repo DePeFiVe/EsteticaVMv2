@@ -127,32 +127,27 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
 
   const fetchAvailableMonths = async () => {
     try {
-      const { data, error } = await extendSupabaseWithHeaders
+      extendSupabaseWithHeaders(supabase);
+      const { data, error } = await supabase
         .from('staff_schedules')
         .select('day_of_week')
         .gt('start_time', '00:00:00')
         .lt('end_time', '23:59:59')
-        .limit(1)
-        .setHeaders({
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        });
+        .limit(1);
 
       if (error) throw error;
 
-      if (data && data.length > 0) {
+      if (data?.length) {
         const months: AvailableMonth[] = [];
         const now = new Date();
-        
         for (let i = 0; i < 6; i++) {
           const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
           months.push({
             year: date.getFullYear(),
             month: date.getMonth() + 1,
-            label: format(date, 'MMMM yyyy', { locale: es })
+            label: format(date, 'MMMM yyyy', { locale: es }),
           });
         }
-        
         setAvailableMonths(months);
       } else {
         setError('No hay horarios disponibles en este momento');
@@ -165,30 +160,19 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
 
   const fetchStaff = async () => {
     try {
-      const { data: staffServices, error: staffError } = await extendSupabaseWithHeaders
+      extendSupabaseWithHeaders(supabase);
+      const { data: staffServices, error } = await supabase
         .from('staff_services')
-        .select(`
-          staff:staff_id (
-            id,
-            first_name,
-            last_name
-          )
-        `)
-        .eq('service_id', service.id as string)
-        .setHeaders({
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        });
+        .select('staff:staff_id (id, first_name, last_name)')
+        .eq('service_id', service.id);
 
-      if (staffError) throw staffError;
+      if (error) throw error;
 
       if (staffServices) {
         const uniqueStaff = staffServices
           .filter((item): item is { staff: Staff } => item.staff !== null)
-          .map((item: { staff: Staff }) => item.staff)
-          .filter((staff, index, self) => 
-            index === self.findIndex((s: Staff) => s.id === staff.id)
-          );
+          .map((item) => item.staff)
+          .filter((staff, index, self) => self.findIndex((s) => s.id === staff.id) === index);
         setStaff(uniqueStaff);
 
         if (uniqueStaff.length === 1) {
@@ -208,318 +192,38 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
       setLoading(true);
       setError(null);
 
-      console.log(`[DEBUG-CRITICAL] ===== INICIO updateTimeSlots =====`);
-      console.log(`[DEBUG-CRITICAL] Staff seleccionado: ${selectedStaff}, Fecha: ${selectedDate}`);
-
       const timeZone = 'America/Montevideo';
-      debugTimeSlots.logTimeZone(timeZone);
-      console.log(`[DEBUG-CRITICAL] Usando zona horaria forzada: ${timeZone}`);
-
-      const selectedDateTimeStr = `${selectedDate}T00:00:00`;
-      const selectedDateObj = new Date(selectedDateTimeStr);
-      console.log(`[DEBUG-CRITICAL] Fecha seleccionada como objeto: ${selectedDateObj.toISOString()}`);
-      
-      const { data: schedules, error: schedulesError } = await extendSupabaseWithHeaders
-        .from('staff_schedules')
-        .select('*')
-        .eq('staff_id', selectedStaff)
-        .eq('day_of_week', selectedDateObj.getDay())
-        .setHeaders({
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        });
-
-      if (schedulesError) throw schedulesError;
-
-      console.log(`[DEBUG-CRITICAL] Horarios encontrados para staff_id=${selectedStaff}:`, schedules);
-
-      const staffSchedule = schedules?.[0];
-      debugTimeSlots.logStaffSchedule(staffSchedule);
-
-      if (!staffSchedule) {
-        console.log(`[DEBUG-CRITICAL] No se encontró horario para el profesional en este día`);
-        setTimeSlots([]);
-        setError('El profesional no atiende este día');
-        return;
-      }
-
       const startOfDay = formatInTimeZone(new Date(selectedDate), timeZone, "yyyy-MM-dd'T'00:00:00XXX");
       const endOfDay = formatInTimeZone(new Date(selectedDate), timeZone, "yyyy-MM-dd'T'23:59:59XXX");
-      
-      debugTimeSlots.logDateRange(startOfDay, endOfDay);
 
-      console.log(`[DEBUG-CRITICAL] Buscando horarios disponibles para staff_id: ${selectedStaff}`);
-      console.log(`[DEBUG-CRITICAL] Parámetros de consulta: startOfDay=${startOfDay}, endOfDay=${endOfDay}`);
-      
-      const { data: allAvailableSlots, error: allSlotsError } = await extendSupabaseWithHeaders
-        .from('blocked_times')
-        .select('*')
-        .eq('is_available_slot', true)
-        .setHeaders({
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        });
-        
-      if (allSlotsError) {
-        console.log(`[DEBUG-CRITICAL] Error al verificar todos los horarios disponibles:`, allSlotsError);
-      } else {
-        console.log(`[DEBUG-CRITICAL] Total de horarios disponibles en la base de datos: ${allAvailableSlots?.length || 0}`);
-        if (allAvailableSlots && allAvailableSlots.length > 0) {
-          console.log(`[DEBUG-CRITICAL] Ejemplo de un horario disponible:`, allAvailableSlots[0]);
-          console.log(`[DEBUG-CRITICAL] Listado de todos los horarios disponibles:`);
-          allAvailableSlots.forEach((slot: Database['public']['Tables']['blocked_times']['Row'], index) => {
-            console.log(`[DEBUG-CRITICAL] Slot ${index + 1}: staff_id=${slot.staff_id}, start=${slot.start_time}, end=${slot.end_time}`);
-          });
-        }
-      }
-      
-      console.log(`[DEBUG-CRITICAL] Consultando horarios disponibles con los siguientes filtros:`);
-      console.log(`[DEBUG-CRITICAL] - staff_id: ${selectedStaff}`);
-      console.log(`[DEBUG-CRITICAL] - is_available_slot: true`);
-      console.log(`[DEBUG-CRITICAL] - start_time >= ${startOfDay}`);
-      console.log(`[DEBUG-CRITICAL] - end_time <= ${endOfDay}`);
-      
-      const { data: availableSlots, error: availableSlotsError } = await extendSupabaseWithHeaders
+      const { data: availableSlots, error } = await supabase
         .from('blocked_times')
         .select('*')
         .eq('staff_id', selectedStaff)
         .eq('is_available_slot', true)
         .gte('start_time', startOfDay)
-        .lte('end_time', endOfDay)
-        .setHeaders({
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        });
+        .lte('end_time', endOfDay);
 
-      if (availableSlotsError) {
-        console.log(`[DEBUG-CRITICAL] Error al buscar horarios disponibles:`, availableSlotsError);
-        throw availableSlotsError;
-      }
-
-      console.log(`[DEBUG-CRITICAL] Datos crudos de blocked_times (availableSlots):`, availableSlots);
-      console.log(`[DEBUG-CRITICAL] Número de bloques disponibles encontrados: ${availableSlots?.length || 0}`);
-      
-      if (availableSlots && availableSlots.length > 0) {
-        console.log(`[DEBUG-CRITICAL] Detalles de bloques disponibles:`);
-        availableSlots.forEach((slot: Database['public']['Tables']['blocked_times']['Row'], index) => {
-          console.log(`[DEBUG-CRITICAL] Bloque disponible ${index + 1}: start=${slot.start_time}, end=${slot.end_time}`);
-        });
-      } else {
-        console.log(`[DEBUG-CRITICAL] ⚠️ NO SE ENCONTRARON BLOQUES DISPONIBLES para el profesional en esta fecha`);
-      }
-      
-      if (availableSlots && availableSlots.length === 0) {
-        console.log(`[DEBUG-CRITICAL] No se encontraron horarios disponibles con todos los filtros. Verificando filtros individuales...`);
-        
-        const { data: staffSlots } = await extendSupabaseWithHeaders
-          .from('blocked_times')
-          .select('*')
-          .eq('staff_id', selectedStaff)
-          .setHeaders({
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          });
-          
-        console.log(`[DEBUG-CRITICAL] Horarios para staff_id=${selectedStaff}: ${staffSlots?.length || 0}`);
-        
-        const { data: availableOnlySlots } = await extendSupabaseWithHeaders
-          .from('blocked_times')
-          .select('*')
-          .eq('is_available_slot', true)
-          .setHeaders({
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          });
-          
-        console.log(`[DEBUG-CRITICAL] Horarios con is_available_slot=true: ${availableOnlySlots?.length || 0}`);
-        
-        const { data: dateRangeSlots } = await extendSupabaseWithHeaders
-          .from('blocked_times')
-          .select('*')
-          .gte('start_time', startOfDay)
-          .lte('end_time', endOfDay)
-          .setHeaders({
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          });
-          
-        console.log(`[DEBUG-CRITICAL] Horarios en el rango de fechas: ${dateRangeSlots?.length || 0}`);
-      }
-
-      let workingHours: { start: Date; end: Date }[] = [];
-      if (availableSlots && availableSlots.length > 0) {
-        debugTimeSlots.logAvailableSlots(availableSlots);
-        workingHours = availableSlots.map((slot: Database['public']['Tables']['blocked_times']['Row']) => ({
-          start: new Date(slot.start_time),
-          end: new Date(slot.end_time)
-        }));
-      } else {
-        const startTime = new Date(`${selectedDate}T${staffSchedule.start_time}`);
-        const endTime = new Date(`${selectedDate}T${staffSchedule.end_time}`);
-        
-        debugTimeSlots.logWorkingHoursFallback(startTime, endTime);
-        
-        workingHours = [{
-          start: startTime,
-          end: endTime
-        }];
-      }
-
-      console.log(`[DEBUG-CRITICAL] Consultando citas y bloques para staff_id=${selectedStaff} entre ${startOfDay} y ${endOfDay}`);
-      const [
-        { data: appointments, error: appError },
-        { data: guestAppointments, error: guestError },
-        { data: blockedTimes, error: blockedError }
-      ] = await Promise.all([
-        extendSupabaseWithHeaders
-          .from('appointments')
-          .select('date, service:services(duration)')
-          .eq('staff_id', selectedStaff)
-          .eq('status', 'confirmed')
-          .gte('date', startOfDay)
-          .lte('date', endOfDay)
-          .setHeaders({
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }),
-        extendSupabaseWithHeaders
-          .from('guest_appointments')
-          .select('date, service:services(duration)')
-          .eq('staff_id', selectedStaff)
-          .eq('status', 'confirmed')
-          .gte('date', startOfDay)
-          .lte('date', endOfDay)
-          .setHeaders({
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }),
-        extendSupabaseWithHeaders
-          .from('blocked_times')
-          .select('*')
-          .eq('is_available_slot', false)
-          .or(`staff_id.is.null,staff_id.eq.${selectedStaff}`)
-          .gte('start_time', startOfDay)
-          .lte('end_time', endOfDay)
-          .setHeaders({
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          })
-      ]);
-
-      if (appError) throw appError;
-      if (guestError) throw guestError;
-      if (blockedError) throw blockedError;
-      
-      debugTimeSlots.logOccupiedRanges(appointments, guestAppointments, blockedTimes);
-
-      const occupiedTimeRanges = [
-        ...(appointments || []).map(apt => ({
-          start: new Date(apt.date),
-          end: addMinutes(new Date(apt.date), apt.service.duration)
-        })),
-        ...(guestAppointments || []).map(apt => ({
-          start: new Date(apt.date),
-          end: addMinutes(new Date(apt.date), apt.service.duration)
-        })),
-        ...(blockedTimes || []).filter((block: Database['public']['Tables']['blocked_times']['Row']) => !block.is_available_slot).map((block: Database['public']['Tables']['blocked_times']['Row']) => ({
-          start: new Date(block.start_time),
-          end: new Date(block.end_time)
-        }))
-      ];
-
-      console.log(`[DEBUG-CRITICAL] Total de rangos ocupados: ${occupiedTimeRanges.length}`);
-      occupiedTimeRanges.forEach((range: { start: Date; end: Date }, index) => {
-        console.log(`[DEBUG-CRITICAL] Rango ocupado ${index + 1}: ${range.start.toISOString()} - ${range.end.toISOString()}`);
-      });
+      if (error) throw error;
 
       const slots: TimeSlot[] = [];
       const now = new Date();
-      console.log(`[DEBUG-CRITICAL] Hora actual: ${now.toISOString()}`);
-      console.log(`[DEBUG-CRITICAL] Duración del servicio: ${service.duration} minutos`);
-      
-      const combinedWorkingHours: { start: Date; end: Date }[] = [];
-      
-      const sortedHours = [...workingHours].sort((a, b) => a.start.getTime() - b.start.getTime());
-      
-      let currentCombined: { start: Date; end: Date } | null = null;
-      for (const hours of sortedHours) {
-        if (!currentCombined) {
-          currentCombined = { ...hours };
-        } else {
-          if (hours.start.getTime() <= currentCombined.end.getTime()) {
-            if (hours.end.getTime() > currentCombined.end.getTime()) {
-              currentCombined.end = hours.end;
-            }
-          } else {
-            combinedWorkingHours.push(currentCombined);
-            currentCombined = { ...hours };
-          }
-        }
-      }
-      
-      if (currentCombined) {
-        combinedWorkingHours.push(currentCombined);
-      }
-      
-      console.log(`[DEBUG-CRITICAL] Horarios combinados: ${combinedWorkingHours.length}`);
-      combinedWorkingHours.forEach((hours: { start: Date; end: Date }, idx) => {
-        console.log(`[DEBUG-CRITICAL] Horario combinado ${idx + 1}: ${hours.start.toISOString()} - ${hours.end.toISOString()}`);
-      });
-      
-      combinedWorkingHours.forEach((hours: { start: Date; end: Date }, idx) => {
-        console.log(`[DEBUG-CRITICAL] Procesando horario combinado ${idx + 1}: ${hours.start.toISOString()} - ${hours.end.toISOString()}`);
-        let currentTime = new Date(hours.start);
-        
-        while (currentTime < hours.end) {
-          const timeString = format(currentTime, 'HH:mm', { locale: es });
-          const slotEndTime = addMinutes(currentTime, service.duration);
-          
-          if (slotEndTime <= hours.end) {
-            const now = new Date();
-            const isInPast = new Date(selectedDate).setHours(0,0,0,0) < now.setHours(0,0,0,0) || 
-                          (new Date(selectedDate).setHours(0,0,0,0) === now.setHours(0,0,0,0) && 
-                           currentTime <= now);
-            
-            const isOverlapping = occupiedTimeRanges.some(range => 
-              (currentTime >= range.start && currentTime < range.end) || 
-              (slotEndTime > range.start && slotEndTime <= range.end) ||
-              (currentTime <= range.start && slotEndTime >= range.end)
-            );
-            
-            debugTimeSlots.logSlotDiscarded(timeString, isInPast, isOverlapping);
-            
-            if (!isInPast && !isOverlapping) {
-              slots.push({
-                time: timeString,
-                available: true
-              });
-              console.log(`[DEBUG-CRITICAL] ✅ Slot ${timeString} AÑADIDO como disponible`);
-            } else {
-              const reason = isInPast ? 'en el pasado' : 'superpuesto con otro horario';
-              console.log(`[DEBUG-CRITICAL] ❌ Slot ${timeString} descartado: ${reason}`);
-            }
-          } else {
-            console.log(`[DEBUG-CRITICAL] ❌ Slot ${timeString} descartado: no cabe en el horario de trabajo (terminaría a ${format(slotEndTime, 'HH:mm')})`);
-          }
-          
-          currentTime = addMinutes(currentTime, 30);
+
+      availableSlots?.forEach((slot) => {
+        const startTime = new Date(slot.start_time);
+        const endTime = addMinutes(startTime, service.duration);
+
+        if (endTime <= new Date(slot.end_time) && startTime > now) {
+          slots.push({ time: format(startTime, 'HH:mm', { locale: es }), available: true });
         }
       });
 
-      debugTimeSlots.logGeneratedSlots(slots);
       setTimeSlots(slots);
-
-      if (slots.length === 0) {
-        setError('No hay horarios disponibles para esta fecha');
-      } else {
-        setError(null);
-      }
-
+      if (!slots.length) setError('No hay horarios disponibles para esta fecha');
     } catch (err) {
-      console.error('[DEBUG-CRITICAL] Error checking availability:', err);
+      console.error('Error updating time slots:', err);
       setError('Error al verificar disponibilidad');
     } finally {
-      console.log(`[DEBUG-CRITICAL] ===== FIN updateTimeSlots =====`);
       setLoading(false);
     }
   };
@@ -554,103 +258,40 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
       }
 
       const [hours, minutes] = selectedTime.split(':').map(Number);
-      const appointmentDate = new Date(Date.UTC(
-        new Date(selectedDate).getFullYear(),
-        new Date(selectedDate).getMonth(),
-        new Date(selectedDate).getDate(),
-        hours,
-        minutes
-      ));
+      const appointmentDate = new Date(
+        new Date(selectedDate).setHours(hours, minutes, 0, 0)
+      ).toISOString();
 
-      // Separamos los datos según si es un usuario registrado o invitado
-      // para evitar problemas de tipado con user_id
-      const userAppointmentData = user ? {
-        service_id: service.id,
-        staff_id: selectedStaff,
-        user_id: user.id,
-        date: appointmentDate.toISOString(),
-        status: 'pending'
-      } : null;
-      
-      const guestAppointmentData = !user ? {
-        service_id: service.id,
-        staff_id: selectedStaff,
-        first_name: guestInfo.firstName,
-        last_name: guestInfo.lastName,
-        phone: formatPhone(guestInfo.phone),
-        date: appointmentDate.toISOString(),
-        status: 'pending'
-      } : null;
+      const appointmentData = user
+        ? {
+            service_id: service.id,
+            staff_id: selectedStaff,
+            user_id: user.id,
+            date: appointmentDate,
+            status: 'pending',
+          }
+        : {
+            service_id: service.id,
+            staff_id: selectedStaff,
+            first_name: guestInfo.firstName,
+            last_name: guestInfo.lastName,
+            phone: formatPhone(guestInfo.phone),
+            date: appointmentDate,
+            status: 'pending',
+          };
 
-      if (user && userAppointmentData) {
-        const { data, error: insertError } = await extendSupabaseWithHeaders
-          .from('appointments')
-          .insert(userAppointmentData)
-          .select()
-          .setHeaders({
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          });
+      const table = user ? 'appointments' : 'guest_appointments';
 
-        if (insertError) {
-          console.error('[DEBUG-CRITICAL] Error completo de Supabase:', insertError);
-          console.error('[DEBUG-CRITICAL] Código de error:', insertError.code);
-          console.error('[DEBUG-CRITICAL] Mensaje de error:', insertError.message);
-          console.error('[DEBUG-CRITICAL] Detalles:', insertError.details);
-          console.error('[DEBUG-CRITICAL] Sugerencia:', insertError.hint);
-          throw insertError;
-        }
+      extendSupabaseWithHeaders(supabase, { Accept: 'application/json' });
 
-        console.log('[DEBUG-CRITICAL] Cita creada exitosamente:', data);
-      } else if (guestAppointmentData) {
-        if (!guestInfo.firstName || !guestInfo.lastName || !guestInfo.phone) {
-          throw new Error('Por favor completa todos los campos');
-        }
+      const { error } = await supabase.from(table).insert(appointmentData);
 
-        if (!validateGuestInfo()) {
-          setLoading(false);
-          return;
-        }
-
-        const { data, error: insertError } = await extendSupabaseWithHeaders
-          .from('guest_appointments')
-          .insert(guestAppointmentData)
-          .select()
-          .setHeaders({
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          });
-
-        if (insertError) {
-          console.error('[DEBUG-CRITICAL] Error completo de Supabase:', insertError);
-          console.error('[DEBUG-CRITICAL] Código de error:', insertError.code);
-          console.error('[DEBUG-CRITICAL] Mensaje de error:', insertError.message);
-          console.error('[DEBUG-CRITICAL] Detalles:', insertError.details);
-          console.error('[DEBUG-CRITICAL] Sugerencia:', insertError.hint);
-          throw insertError;
-        }
-
-        console.log('[DEBUG-CRITICAL] Cita de invitado creada exitosamente:', data);
-      }
+      if (error) throw error;
 
       setSuccess(true);
     } catch (err) {
       console.error('Error creating appointment:', err);
-      
-      if (err instanceof Error) {
-        if (err.message.includes('overlap')) {
-          setError('La hora seleccionada ya no está disponible. Por favor, elige otra hora.');
-          updateTimeSlots();
-        } else if (err.message.includes('foreign key constraint')) {
-          setError('Error de referencia en la base de datos. Por favor, intenta de nuevo.');
-        } else if (err.message.includes('not-found')) {
-          setError('El servicio o profesional seleccionado ya no está disponible.');
-        } else {
-          setError(err.message);
-        }
-      } else {
-        setError('Error al crear la cita. Por favor, intenta de nuevo.');
-      }
+      setError('Error al crear la cita. Por favor, intenta de nuevo.');
     } finally {
       setLoading(false);
     }

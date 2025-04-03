@@ -219,28 +219,124 @@ export async function sendNotification(
   notificationType: 'confirmation' | 'reminder' | 'short_reminder' | 'cancellation'
 ) {
   try {
-    // Obtener datos de la cita
+    // Define explicit types for appointment data
+    interface GuestAppointmentData {
+      id: string;
+      date: string;
+      status: string;
+      service: {
+        id: string;
+        name: string;
+        category: string;
+        duration: number;
+      };
+      first_name: string;
+      last_name: string;
+      phone: string;
+    }
+
+    interface UserAppointmentData {
+      id: string;
+      date: string;
+      status: string;
+      service: {
+        id: string;
+        name: string;
+        category: string;
+        duration: number;
+      };
+      user: {
+        id: string;
+        first_name: string;
+        last_name: string;
+        phone: string;
+      };
+    }
+
+    // Type guard for GuestAppointmentData
+    function isGuestAppointmentData(data: any): data is GuestAppointmentData {
+      return (
+        data &&
+        typeof data.id === 'string' &&
+        typeof data.date === 'string' &&
+        typeof data.status === 'string' &&
+        data.service &&
+        typeof data.service.id === 'string' &&
+        typeof data.service.name === 'string' &&
+        typeof data.service.category === 'string' &&
+        typeof data.service.duration === 'number' &&
+        typeof data.first_name === 'string' &&
+        typeof data.last_name === 'string' &&
+        typeof data.phone === 'string'
+      );
+    }
+
+    // Type guard for UserAppointmentData
+    function isUserAppointmentData(data: any): data is UserAppointmentData {
+      return (
+        data &&
+        typeof data.id === 'string' &&
+        typeof data.date === 'string' &&
+        typeof data.status === 'string' &&
+        data.service &&
+        typeof data.service.id === 'string' &&
+        typeof data.service.name === 'string' &&
+        typeof data.service.category === 'string' &&
+        typeof data.service.duration === 'number' &&
+        data.user &&
+        typeof data.user.id === 'string' &&
+        typeof data.user.first_name === 'string' &&
+        typeof data.user.last_name === 'string' &&
+        typeof data.user.phone === 'string'
+      );
+    }
+
+    // Adjust the query and validate the result
     const { data: appointmentData, error: appointmentError } = await supabase
       .from(isGuest ? 'guest_appointments' : 'appointments')
-      .select(`
-        id,
-        date,
-        status,
-        service:service_id (id, name, category, duration),
-        ${isGuest ? 'first_name, last_name, phone' : 'user:user_id (id, first_name, last_name, phone)'}
-      `)
+      .select(isGuest
+        ? `
+          id,
+          date,
+          status,
+          service:service_id (id, name, category, duration),
+          first_name,
+          last_name,
+          phone
+        `
+        : `
+          id,
+          date,
+          status,
+          service:service_id (id, name, category, duration),
+          user:user_id (id, first_name, last_name, phone)
+        `
+      )
       .eq('id', appointmentId)
       .single();
 
     if (appointmentError) throw appointmentError;
     if (!appointmentData) throw new Error('Appointment not found');
 
+    // Validate and extract phone number
+    let phoneNumber: string;
+    if (isGuest) {
+      if (!isGuestAppointmentData(appointmentData)) {
+        throw new Error('Invalid guest appointment data structure');
+      }
+      phoneNumber = appointmentData.phone;
+    } else {
+      if (!isUserAppointmentData(appointmentData)) {
+        throw new Error('Invalid user appointment data structure');
+      }
+      phoneNumber = appointmentData.user.phone;
+    }
+
     // Verificar si WhatsApp está habilitado
     const whatsappConfig = await getWhatsAppConfig();
     
     // Determinar el canal de notificación
     // Los números que comienzan con '09' son celulares y pueden recibir WhatsApp
-    const phoneNumber = isGuest ? appointmentData.phone : appointmentData.user.phone;
     const useWhatsApp = whatsappConfig.enabled && phoneNumber.startsWith('09');
     
     if (useWhatsApp) {
