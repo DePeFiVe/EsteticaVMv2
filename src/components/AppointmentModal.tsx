@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { format, addMinutes } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { format, addMinutes, addHours } from 'date-fns';
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { es } from 'date-fns/locale';
 import { X, CheckCircle, Bell, AlertCircle, User } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase.js';
 import { extendSupabaseWithHeaders } from '../lib/supabaseHeaders';
 import { getCurrentUser } from '../lib/auth';
 import type { Database } from '../types/database.types';
 import type { Service } from '../types';
 import { validatePhone, formatPhone } from '../utils/validation';
+import { start } from 'repl';
 
 // Utilidad para depuración de horarios
 const debugTimeSlots = {
@@ -66,9 +67,10 @@ interface AvailableMonth {
   label: string;
 }
 
-const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, onClose }) => {
+const AppointmentModal = ({ service, isOpen, onClose }: AppointmentModalProps) => {
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string>('');
+  console.log(`[DEBUG-CRITICAL] AppointmentModal - selectedDate: ${selectedDate}`);
   const [selectedStaff, setSelectedStaff] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,13 +129,15 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
 
   const fetchAvailableMonths = async () => {
     try {
-      extendSupabaseWithHeaders(supabase);
-      const { data, error } = await supabase
+      const { data, error } = await extendSupabaseWithHeaders(supabase)
         .from('staff_schedules')
         .select('day_of_week')
         .gt('start_time', '00:00:00')
         .lt('end_time', '23:59:59')
-        .limit(1);
+        .limit(1)
+        .setHeader('Accept', 'application/json')
+          .setHeader('Content-Type', 'application/json')
+          .setHeader('Prefer', 'return=representation');
 
       if (error) throw error;
 
@@ -160,11 +164,13 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
 
   const fetchStaff = async () => {
     try {
-      extendSupabaseWithHeaders(supabase);
-      const { data: staffServices, error } = await supabase
+      const { data: staffServices, error } = await extendSupabaseWithHeaders(supabase)
         .from('staff_services')
         .select('staff:staff_id (id, first_name, last_name)')
-        .eq('service_id', service.id);
+        .eq('service_id', service.id)
+        .setHeader('Accept', 'application/json')
+          .setHeader('Content-Type', 'application/json')
+          .setHeader('Prefer', 'return=representation');
 
       if (error) throw error;
 
@@ -188,34 +194,204 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
   const updateTimeSlots = async () => {
     if (!selectedStaff || !selectedDate) return;
 
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      setError(null);
-
       const timeZone = 'America/Montevideo';
-      const startOfDay = formatInTimeZone(new Date(selectedDate), timeZone, "yyyy-MM-dd'T'00:00:00XXX");
-      const endOfDay = formatInTimeZone(new Date(selectedDate), timeZone, "yyyy-MM-dd'T'23:59:59XXX");
+      const selectedDateTimeStr = `${selectedDate}T12:00:00`;
+      const selectedDateObj = toZonedTime(selectedDateTimeStr, timeZone);
+      console.log(`[DEBUG-CRITICAL] Fecha seleccionada como objeto: ${selectedDateObj.toISOString()}`);
+      console.log(`[DEBUG-CRITICAL] Día de la semana: ${selectedDateObj.getDay()}`);
 
-      const { data: availableSlots, error } = await supabase
+      const startOfDay = formatInTimeZone(selectedDateObj, timeZone, "yyyy-MM-dd'T'00:00:00XXX");
+      const endOfDay = formatInTimeZone(selectedDateObj, timeZone, "yyyy-MM-dd'T'23:59:59XXX");
+
+      console.log(`[DEBUG-CRITICAL] Procesando fecha: ${selectedDate}`);
+      debugTimeSlots.logDateRange(startOfDay, endOfDay);
+
+      // Obtener horarios del personal
+      const { data: staffSchedule, error: scheduleError } = await extendSupabaseWithHeaders(supabase)
+        .from('staff_schedules')
+        .select('*')
+        .eq('staff_id', selectedStaff)
+        .eq('day_of_week', selectedDateObj.getDay())
+        .single();
+
+      if (scheduleError && scheduleError.code !== 'PGRST116') throw scheduleError;
+      debugTimeSlots.logStaffSchedule(staffSchedule);
+
+      // Obtener horarios bloqueados específicos
+      const { data: availableSlots, error: slotsError } = await extendSupabaseWithHeaders(supabase)
         .from('blocked_times')
         .select('*')
         .eq('staff_id', selectedStaff)
         .eq('is_available_slot', true)
-        .gte('start_time', startOfDay)
-        .lte('end_time', endOfDay);
+        .lte('start_time', endOfDay)
+        .gte('end_time', startOfDay)
+        .setHeader('Accept', 'application/json')
+        .setHeader('Content-Type', 'application/json')
+        .setHeader('Prefer', 'return=representation');
 
-      if (error) throw error;
+      if (slotsError) throw slotsError;
+      debugTimeSlots.logAvailableSlots(availableSlots || []);
+
+      // Obtener citas existentes
+      const { data: appointments, error: appError } = await extendSupabaseWithHeaders(supabase)
+        .from('appointments')
+        .select('date, service:service_id (duration)')
+        .eq('staff_id', selectedStaff)
+        .gte('date', startOfDay)
+        .lte('date', endOfDay)
+        .neq('status', 'cancelled')
+        .setHeader('Accept', 'application/json')
+        .setHeader('Content-Type', 'application/json')
+        .setHeader('Prefer', 'return=representation');
+
+      if (appError) throw appError;
+
+      // Obtener citas de invitados
+      const { data: guestAppointments, error: guestError } = await extendSupabaseWithHeaders(supabase)
+        .from('guest_appointments')
+        .select('date, service:service_id (duration)')
+        .eq('staff_id', selectedStaff)
+        .gte('date', startOfDay)
+        .lte('date', endOfDay)
+        .neq('status', 'cancelled')
+        .setHeader('Accept', 'application/json')
+        .setHeader('Content-Type', 'application/json')
+        .setHeader('Prefer', 'return=representation');
+
+      if (guestError) throw guestError;
+
+      // Obtener horarios no disponibles
+      const { data: unavailableSlots, error: unavailableError } = await extendSupabaseWithHeaders(supabase)
+        .from('blocked_times')
+        .select('*')
+        .eq('staff_id', selectedStaff)
+        .eq('is_available_slot', false)
+        .lte('start_time', endOfDay)
+        .gte('end_time', startOfDay)
+        .setHeader('Accept', 'application/json')
+        .setHeader('Content-Type', 'application/json')
+        .setHeader('Prefer', 'return=representation');
+
+      if (unavailableError) throw unavailableError;
+
+      const occupiedTimeRanges = [
+        ...(appointments || []).map(apt => ({
+          start: new Date(apt.date),
+          end: addMinutes(new Date(apt.date), apt.service.duration)
+        })),
+        ...(guestAppointments || []).map(apt => ({
+          start: new Date(apt.date),
+          end: addMinutes(new Date(apt.date), apt.service.duration)
+        })),
+        ...(unavailableSlots || []).map(slot => ({
+          start: new Date(slot.start_time),
+          end: new Date(slot.end_time)
+        }))
+      ];
+
+      console.log(`[DEBUG-CRITICAL] Total de rangos ocupados: ${occupiedTimeRanges.length}`);
+      occupiedTimeRanges.forEach((range, index) => {
+        console.log(`[DEBUG-CRITICAL] Rango ocupado ${index + 1}: ${range.start.toISOString()} - ${range.end.toISOString()}`);
+      });
 
       const slots: TimeSlot[] = [];
       const now = new Date();
+      console.log(`[DEBUG-CRITICAL] Hora actual: ${now.toISOString()}`);
 
-      availableSlots?.forEach((slot) => {
-        const startTime = new Date(slot.start_time);
-        const endTime = addMinutes(startTime, service.duration);
+      const workingHours = (availableSlots || []).map(slot => ({
+        start: new Date(slot.start_time),
+        end: new Date(slot.end_time)
+      }));
 
-        if (endTime <= new Date(slot.end_time) && startTime > now) {
-          slots.push({ time: format(startTime, 'HH:mm', { locale: es }), available: true });
+      const sortedHours = [...workingHours].sort((a, b) => a.start.getTime() - b.start.getTime());
+      const combinedWorkingHours = [];
+      let currentCombined = null;
+      for (const hours of sortedHours) {
+        if (!currentCombined) {
+          currentCombined = { ...hours };
+        } else {
+          if (hours.start.getTime() <= currentCombined.end.getTime()) {
+            if (hours.end.getTime() > currentCombined.end.getTime()) {
+              currentCombined.end = hours.end;
+            }
+          } else {
+            combinedWorkingHours.push(currentCombined);
+            currentCombined = { ...hours };
+          }
         }
+      }
+      if (currentCombined) {
+        combinedWorkingHours.push(currentCombined);
+      }
+
+      console.log(`[DEBUG-CRITICAL] Horarios combinados: ${combinedWorkingHours.length}`);
+      combinedWorkingHours.forEach((hours, idx) => {
+        console.log(`[DEBUG-CRITICAL] Horario combinado ${idx + 1}: ${hours.start.toISOString()} - ${hours.end.toISOString()}`);
+      });
+
+      combinedWorkingHours.forEach((hours, idx) => {
+        console.log(`[DEBUG-CRITICAL] Procesando horario combinado ${idx + 1}: ${hours.start.toISOString()} - ${hours.end.toISOString()}`);
+        let currentTime = new Date(hours.start);
+        
+        while (currentTime < hours.end) {
+          const timeString = formatInTimeZone(currentTime, timeZone, 'HH:mm', { locale: es });
+          const slotEndTime = addMinutes(currentTime, service.duration);
+          
+          console.log(`[DEBUG-CRITICAL] Evaluando slot: ${timeString} (${currentTime.toISOString()} - ${slotEndTime.toISOString()})`);
+          
+          const now = new Date();
+          const isInPast = new Date(selectedDate).setHours(0,0,0,0) < now.setHours(0,0,0,0) || 
+                          (new Date(selectedDate).setHours(0,0,0,0) === now.setHours(0,0,0,0) && 
+                           currentTime <= now);
+          const isOverlapping = occupiedTimeRanges.some(range => 
+            (currentTime >= range.start && currentTime < range.end) || 
+            (slotEndTime > range.start && slotEndTime <= range.end) ||
+            (currentTime <= range.start && slotEndTime >= range.end)
+          );
+          const exceedsBlockTime = slotEndTime > hours.end;
+          
+          console.log(`[DEBUG-CRITICAL] Slot ${timeString} - isInPast: ${isInPast}, isOverlapping: ${isOverlapping}, exceedsBlockTime: ${exceedsBlockTime}`);
+          
+          if (!isInPast && !isOverlapping && !exceedsBlockTime) {
+            slots.push({
+              time: timeString,
+              available: true
+            });
+            console.log(`[DEBUG-CRITICAL] ✅ Slot ${timeString} AÑADIDO como disponible`);
+          } else {
+            const reason = isInPast ? 'en el pasado' : 'superpuesto con otro horario';
+            console.log(`[DEBUG-CRITICAL] ❌ Slot ${timeString} descartado: ${reason}`);
+          }
+          
+          currentTime = addMinutes(currentTime, 30);
+        }
+      });
+
+      console.log(`[DEBUG-CRITICAL] Total de slots generados: ${slots.length}`);
+      if (slots.length > 0) {
+        console.log(`[DEBUG-CRITICAL] Slots disponibles:`, slots.map(s => s.time).join(', '));
+      } else {
+        console.log(`[DEBUG-CRITICAL] No se generaron slots disponibles`);
+      }
+      setTimeSlots(slots);
+
+      if (slots.length === 0) {
+        setError('No hay horarios disponibles para esta fecha');
+      } else {
+        setError(null);
+      }
+
+
+
+      // Ordenar los horarios
+      slots.sort((a, b) => {
+        const timeA = new Date(`1970-01-01T${a.time}:00`);
+        const timeB = new Date(`1970-01-01T${b.time}:00`);
+        return timeA.getTime() - timeB.getTime();
       });
 
       setTimeSlots(slots);
@@ -253,40 +429,98 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
     setError(null);
 
     try {
+      if (!user && !validateGuestInfo()) {
+        throw new Error('Por favor verifica la información ingresada');
+      }
+
       if (!selectedDate || !selectedTime || !selectedStaff) {
         throw new Error('Por favor selecciona profesional, fecha y hora');
       }
 
+      const timeZone = 'America/Montevideo';
       const [hours, minutes] = selectedTime.split(':').map(Number);
-      const appointmentDate = new Date(
-        new Date(selectedDate).setHours(hours, minutes, 0, 0)
-      ).toISOString();
+      
+      // Construir la fecha y hora en la zona horaria local (Montevideo)
+      const localDate = `${selectedDate}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+      const appointmentDate = toZonedTime(localDate, timeZone);
+      const endDate = addMinutes(appointmentDate, service.duration);
 
-      const appointmentData = user
-        ? {
-            service_id: service.id,
-            staff_id: selectedStaff,
-            user_id: user.id,
-            date: appointmentDate,
-            status: 'pending',
-          }
-        : {
-            service_id: service.id,
-            staff_id: selectedStaff,
-            first_name: guestInfo.firstName,
-            last_name: guestInfo.lastName,
-            phone: formatPhone(guestInfo.phone),
-            date: appointmentDate,
-            status: 'pending',
-          };
+      // Verificar disponibilidad antes de crear la cita
+      const startOfDay = formatInTimeZone(appointmentDate, timeZone, "yyyy-MM-dd'T'00:00:00XXX");
+      const endOfDay = formatInTimeZone(appointmentDate, timeZone, "yyyy-MM-dd'T'23:59:59XXX");
+
+      // Verificar citas existentes en el mismo horario
+      const { data: existingAppointments, error: checkError } = await extendSupabaseWithHeaders(supabase)
+        .from('appointments')
+        .select('date, service:service_id (duration)')
+        .eq('staff_id', selectedStaff)
+        .gte('date', startOfDay)
+        .lte('date', endOfDay)
+        .neq('status', 'cancelled')
+        .setHeader('Accept', 'application/json')
+        .setHeader('Content-Type', 'application/json');
+
+      if (checkError) throw checkError;
+
+      // Verificar citas de invitados en el mismo horario
+      const { data: existingGuestAppointments, error: guestCheckError } = await extendSupabaseWithHeaders(supabase)
+        .from('guest_appointments')
+        .select('date, service:service_id (duration)')
+        .eq('staff_id', selectedStaff)
+        .gte('date', startOfDay)
+        .lte('date', endOfDay)
+        .neq('status', 'cancelled')
+        .setHeader('Accept', 'application/json')
+        .setHeader('Content-Type', 'application/json');
+
+      if (guestCheckError) throw guestCheckError;
+
+      // Verificar si hay superposición con otras citas
+      const hasOverlap = [...(existingAppointments || []), ...(existingGuestAppointments || [])].some(apt => {
+        const existingStart = new Date(apt.date);
+        const existingEnd = addMinutes(existingStart, apt.service.duration);
+        return (
+          (appointmentDate >= existingStart && appointmentDate < existingEnd) ||
+          (endDate > existingStart && endDate <= existingEnd) ||
+          (appointmentDate <= existingStart && endDate >= existingEnd)
+        );
+      });
+
+      if (hasOverlap) {
+        throw new Error('El horario seleccionado ya no está disponible. Por favor, elige otro horario.');
+      }
+
+      // Crear el objeto de cita con las fechas correctas
+      const appointmentData = {
+        service_id: service.id,
+        staff_id: selectedStaff,
+        start_time: appointmentDate.toISOString().replace('T', ' ').replace('Z','').replace('.000','+00'),
+        end_time: endDate.toISOString().replace('T', ' ').replace('Z','').replace('.000','+00'),
+        date: appointmentDate.toISOString().replace('T', ' ').replace('Z','').replace('.000','+00'),
+        status: 'pending',
+        duration: service.duration,
+        ...(user ? { 
+          user_id: user.id,
+        } : {
+          first_name: guestInfo.firstName,
+          last_name: guestInfo.lastName,
+          phone: formatPhone(guestInfo.phone),
+        })
+      };
+      console.log('[DEBUG-CRITICAL] appointmentData:', appointmentData);
 
       const table = user ? 'appointments' : 'guest_appointments';
 
-      extendSupabaseWithHeaders(supabase, { Accept: 'application/json' });
+      // Configurar los headers necesarios para la solicitud
+      const { error: insertError } = await extendSupabaseWithHeaders(supabase)
+        .from(table)
+        .insert(appointmentData)        
+        .setHeader('Accept', 'application/json')
+        .setHeader('Content-Type', 'application/json')
+        .setHeader('Prefer', 'return=representation')
+        .setHeader('Authorization', `Bearer ${user?.access_token || ''}`);
 
-      const { error } = await supabase.from(table).insert(appointmentData);
-
-      if (error) throw error;
+      if (insertError) throw insertError;
 
       setSuccess(true);
     } catch (err) {
@@ -448,18 +682,29 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
                         setSelectedTime('');
                         
                         if (e.target.value) {
-                          // Set to first day of month by default
+                          // Set to next day of month by default
                           const [year, month] = e.target.value.split('-');
                           const firstDay = new Date(parseInt(year), parseInt(month) - 1, 1);
+                          console.log(`[DEBUG-CRITICAL] Month selection - year: ${year}, month: ${month}, firstDay: ${firstDay.toISOString()}`);
                           
-                          // If first day is in the past, set to today
-                          if (firstDay < new Date()) {
-                            if (new Date().getMonth() === firstDay.getMonth() && 
-                                new Date().getFullYear() === firstDay.getFullYear()) {
-                              setSelectedDate(new Date().toISOString().split('T')[0]);
+                          const today = new Date();
+                          let selectedDay;
+                          
+                          if (firstDay < today) {
+                            if (today.getMonth() === firstDay.getMonth() && 
+                                today.getFullYear() === firstDay.getFullYear()) {
+                              // Si es el mes actual, establecer al día siguiente
+                              selectedDay = new Date(today);
+                              selectedDay.setDate(today.getDate() + 1);
                             }
                           } else {
-                            setSelectedDate(firstDay.toISOString().split('T')[0]);
+                            // Si es un mes futuro, establecer al segundo día del mes
+                            selectedDay = new Date(firstDay);
+                            selectedDay.setDate(2);
+                          }
+                          
+                          if (selectedDay) {
+                            setSelectedDate(selectedDay.toISOString().split('T')[0]);
                           }
                         }
                       }}
@@ -484,6 +729,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ service, isOpen, on
                           min={new Date().toISOString().split('T')[0]}
                           value={selectedDate}
                           onChange={(e) => {
+                            console.log(`[DEBUG-CRITICAL] Date selection - raw value: ${e.target.value}`);
                             setSelectedDate(e.target.value);
                             setSelectedTime('');
                             setError(null);

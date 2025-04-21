@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase.js';
+import { extendSupabaseWithHeaders } from '../../lib/supabaseHeaders';
 
 interface StaffFormProps {
   onClose: () => void;
@@ -50,7 +51,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, selectedStaff
 
   const fetchServices = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await extendSupabaseWithHeaders(supabase)
         .from('services')
         .select('id, name, category')
         .order('category')
@@ -66,14 +67,14 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, selectedStaff
 
   const fetchStaffServices = async (staffId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await extendSupabaseWithHeaders(supabase)
         .from('staff_services')
         .select('service_id')
         .eq('staff_id', staffId);
 
       if (error) throw error;
       // Filter out any null values to ensure we only have strings
-      setSelectedServices(data.map(item => item.service_id).filter((id): id is string => id !== null));
+      setSelectedServices(data.map((item: { service_id: string | null }) => item.service_id).filter((id: string | null): id is string => id !== null));
     } catch (err) {
       console.error('Error fetching staff services:', err);
       setError('Error al cargar los servicios del profesional');
@@ -90,7 +91,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, selectedStaff
 
       if (selectedStaff && staffId) {
         // Update existing staff
-        const { error: updateError } = await supabase
+        const { error: updateError } = await extendSupabaseWithHeaders(supabase)
           .from('staff')
           .update(formData)
           .eq('id', staffId);
@@ -98,7 +99,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, selectedStaff
         if (updateError) throw updateError;
       } else {
         // Insert new staff
-        const { data: newStaff, error: insertError } = await supabase
+        const { data: newStaff, error: insertError } = await extendSupabaseWithHeaders(supabase)
           .from('staff')
           .insert(formData)
           .select()
@@ -111,14 +112,14 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, selectedStaff
       // Update staff services
       if (staffId) {
         // First, remove all existing services
-        await supabase
+        await extendSupabaseWithHeaders(supabase)
           .from('staff_services')
           .delete()
           .eq('staff_id', staffId);
 
         // Then, add selected services
         if (selectedServices.length > 0) {
-          const { error: servicesError } = await supabase
+          const { error: servicesError } = await extendSupabaseWithHeaders(supabase)
             .from('staff_services')
             .insert(
               selectedServices.map(serviceId => ({
@@ -139,7 +140,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, selectedStaff
             end_time: '20:00'
           }));
 
-          const { error: scheduleError } = await supabase
+          const { error: scheduleError } = await extendSupabaseWithHeaders(supabase)
             .from('staff_schedules')
             .insert(defaultSchedules);
 

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 import AppointmentModal from '../components/AppointmentModal';
 import { supabase } from '../lib/supabase';
+import { extendSupabaseWithHeaders } from '../lib/supabaseHeaders';
 import { preloadImage } from '../lib/cloudinary';
 import type { Service } from '../types';
 
@@ -55,6 +56,14 @@ const ServicePage = () => {
     }
   }, [category]);
 
+  // Configurar las cabeceras HTTP una sola vez al inicio
+  const supabaseClient = extendSupabaseWithHeaders(supabase, {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'x-application-name': 'beauty-center',
+    'content-profile': 'public'
+  });
+
   useEffect(() => {
     const fetchServices = async () => {
       if (!category) {
@@ -73,7 +82,7 @@ const ServicePage = () => {
           return;
         }
 
-        const { data, error: supabaseError } = await supabase
+        const { data, error: supabaseError } = await supabaseClient
           .from('services')
           .select('*')
           .eq('category', normalizedCategory as string)

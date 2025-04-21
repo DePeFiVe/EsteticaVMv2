@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import { supabase } from '../lib/supabase';
+import { extendSupabaseWithHeaders } from '../lib/supabaseHeaders';
 import { isAdmin } from '../lib/auth';
 import { Plus, X, ImageIcon, ZoomIn, Search, GripVertical } from 'lucide-react';
 import useLocalStorage from '../hooks/useLocalStorage';
@@ -124,15 +125,7 @@ const Gallery = () => {
       const from = (pageNumber - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      // Use cache if available and not a retry
-      if (!retry && pageNumber === 1 && cachedImages.length > 0) {
-        setImages(cachedImages);
-        setLoading(false);
-        // Fetch in background to update cache
-        fetchImages(1, true);
-        return;
-      }
-
+      // Siempre obtener datos frescos al cargar la página
       const { data, error } = await supabase
         .from('gallery_images')
         .select(`
@@ -142,8 +135,7 @@ const Gallery = () => {
             category
           )
         `)
-        .order('created_at', { ascending: false })
-        .range(from, to);
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -177,6 +169,9 @@ const Gallery = () => {
   useEffect(() => {
     const fetchServices = async () => {
       try {
+        // Extender Supabase con headers adecuados para evitar errores de aceptación
+        extendSupabaseWithHeaders(supabase, { Accept: 'application/json' });
+        
         const { data, error } = await supabase
           .from('services')
           .select('id, name, category')

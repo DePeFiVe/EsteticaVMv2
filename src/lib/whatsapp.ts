@@ -23,6 +23,8 @@ export interface WhatsAppConfig {
   authToken?: string;
   phoneNumber?: string;
   reminderSettings?: ReminderSettings;
+  statusCallbackUrl?: string;  // URL for delivery status callbacks, e.g. https://esteticavm.com/api/twilio-webhook
+  validityPeriod?: number;     // Message validity period in seconds
   [key: string]: string | number | boolean | ReminderSettings | undefined | null;
 }
 
@@ -35,7 +37,7 @@ export async function getWhatsAppConfig(): Promise<WhatsAppConfig> {
     // Verificar primero si la tabla existe
     const { error: tableCheckError } = await supabase
       .from('system_settings')
-      .select('count(*)')
+      .select('id')
       .limit(1);
 
     if (tableCheckError) {
@@ -323,11 +325,23 @@ export async function sendWhatsAppMessage(
     // Enviar mensaje a través de Twilio
     let message;
     try {
-      message = await client.messages.create({
+      const messageOptions: any = {
         body: messageBody,
         from: `whatsapp:${config.phoneNumber}`,
         to: `whatsapp:${formattedPhone}`
-      });
+      };
+
+      // Add status callback URL if configured
+      if (config.statusCallbackUrl) {
+        messageOptions.statusCallback = config.statusCallbackUrl;
+      }
+
+      // Add validity period if configured (in seconds)
+      if (config.validityPeriod && typeof config.validityPeriod === 'number') {
+        messageOptions.validityPeriod = config.validityPeriod;
+      }
+
+      message = await client.messages.create(messageOptions);
     } catch (twilioError) {
       console.error('Error al enviar mensaje a través de Twilio:', twilioError);
       
@@ -367,7 +381,8 @@ export async function sendWhatsAppMessage(
             parameters: safeParameters as Json,
             status: 'sent',
             sent_at: new Date().toISOString(),
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            message_sid: message.sid
           });
       } catch (logError) {
         console.error('Error al registrar envío exitoso en whatsapp_logs:', logError);

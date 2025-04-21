@@ -64,7 +64,23 @@ export function extendSupabaseWithHeaders(
 
   supabase.from = function<T extends keyof Database['public']['Tables'] | keyof Database['public']['Views']>(table: T) {
     const query = originalFrom(table);
-    const customHeaders: Record<string, string> = { ...defaultHeaders };
+    const customHeaders: Record<string, string> = { 
+      ...defaultHeaders,
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+      'baseUrl': import.meta.env.VITE_SUPABASE_URL || '',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'x-application-name': 'beauty-center',
+      'content-profile': 'public'
+    };
+
+    if (!import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      throw new Error('Supabase anon key is not defined. Ensure VITE_SUPABASE_ANON_KEY is set in your .env file.');
+    }
+
+    if (!import.meta.env.VITE_SUPABASE_URL) {
+      throw new Error('Supabase URL is not defined. Ensure VITE_SUPABASE_URL is set in your .env file.');
+    }
 
     const applyHeaders = (options: RequestInit = {}): RequestInit => {
       const headers = new Headers(options.headers || {});
@@ -89,7 +105,7 @@ export function extendSupabaseWithHeaders(
 
     const methodsToWrap = ['select', 'insert', 'update', 'upsert', 'delete'] as const;
     methodsToWrap.forEach((method) => {
-      const originalMethod = query[method] as (...args: any[]) => any;
+      const originalMethod = query[method].bind(query) as (...args: any[]) => any;
       query[method] = function (...args: any[]) {
         const result = originalMethod(...args) as PostgrestFilterBuilder<any, any, any>;
         return addHeaderMethods(result);

@@ -41,6 +41,11 @@ export interface User {
   phone: string;
   birthDate: Date;
   isAdmin?: boolean;
+  access_token?: string;
+  user_metadata?: {
+    first_name?: string;
+    last_name?: string;
+  };
 }
 
 export interface Database {

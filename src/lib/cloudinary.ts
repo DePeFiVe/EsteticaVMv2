@@ -1,9 +1,9 @@
 // Cloudinary configuration for browser uploads
 
 /**
- * Uploads an image to Cloudinary optimized for WebP format
+ * Uploads an image to Cloudinary using unsigned upload preset
  * @param {File} file - The file to upload
- * @param {Object} options - Upload options
+ * @param {Object} options - Upload options (only allowed parameters for unsigned uploads)
  * @returns {Promise<Object>} - The upload result with secure_url
  */
 export const uploadImage = async (file: File, options: any = {}) => {
@@ -17,17 +17,33 @@ export const uploadImage = async (file: File, options: any = {}) => {
       const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'subida-directa';
       formData.append('upload_preset', uploadPreset);
       
-      // Note: Format and quality are configured in the upload preset
-      // instead of being set here to avoid issues with unsigned uploads
-      
-      // Add any custom options
+      // Add only allowed options for unsigned uploads
+      const allowedParams = [
+        'public_id',
+        'folder',
+        'tags',
+        'context',
+        'metadata',
+        'face_coordinates',
+        'custom_coordinates',
+        'filename_override',
+        'asset_folder',
+        'manifest_json',
+        'manifest_transformation',
+        'template',
+        'template_vars',
+        'regions',
+        'public_id_prefix'
+      ];
+
       if (options) {
         Object.entries(options).forEach(([key, value]) => {
-          // Handle arrays (like tags)
-          if (Array.isArray(value)) {
-            value.forEach(item => formData.append(`${key}[]`, item));
-          } else {
-            formData.append(key, String(value));
+          if (allowedParams.includes(key)) {
+            if (Array.isArray(value)) {
+              value.forEach(item => formData.append(`${key}[]`, item));
+            } else {
+              formData.append(key, String(value));
+            }
           }
         });
       }
@@ -45,8 +61,7 @@ export const uploadImage = async (file: File, options: any = {}) => {
         url: uploadUrl,
         preset: uploadPreset,
         fileName: file.name,
-        fileSize: file.size,
-        options: JSON.stringify(options)
+        fileSize: file.size
       });
 
       // Perform the fetch request
@@ -68,7 +83,7 @@ export const uploadImage = async (file: File, options: any = {}) => {
           resolve({
             secure_url: data.secure_url,
             public_id: data.public_id,
-            format: data.format || 'webp',
+            format: data.format,
             original_filename: data.original_filename
           });
         })
@@ -84,53 +99,24 @@ export const uploadImage = async (file: File, options: any = {}) => {
 };
 
 /**
- * Generates a Cloudinary URL with WebP format
+ * Gets the Cloudinary URL for an image
  * @param {string} publicId - The public ID of the image
- * @param {Object} options - Transformation options
- * @returns {string} - The optimized image URL
+ * @returns {string} - The image URL
  */
-export const getOptimizedImageUrl = (publicId: string, options: any = {}) => {
-  // Default options for WebP optimization
-  const defaultOptions = {
-    format: 'webp',
-    quality: 'auto:good',
-    fetch_format: 'auto',
-    dpr: 'auto',
-    width: 'auto',
-    loading: 'lazy',
-    responsive: true
-  };
-  
-  // Merge default options with provided options
-  const transformationOptions = { ...defaultOptions, ...options };
-  
-  // Build the transformation string
-  const transformations = Object.entries(transformationOptions)
-    .map(([key, value]) => `${key}_${value}`)
-    .join(',');
-  
-  // Construct the URL
+export const getOptimizedImageUrl = (publicId: string) => {
   const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-  return `https://res.cloudinary.com/${cloudName}/image/upload/${transformations}/${publicId}`;
+  return `https://res.cloudinary.com/${cloudName}/image/upload/${publicId}`;
 };
 
 /**
  * Preloads an image by creating a link preload tag in the document head
  * @param {string} imageUrl - The URL of the image to preload
  * @param {string} as - The type of content being loaded (default: 'image')
- * @param {string} type - The MIME type of the resource (optional)
  */
-export const preloadImage = (imageUrl: string, as: string = 'image', type?: string) => {
-  if (typeof document === 'undefined') return; // Skip during SSR
-  
+export const preloadImage = (imageUrl: string, as: string = 'image') => {
   const link = document.createElement('link');
   link.rel = 'preload';
   link.href = imageUrl;
   link.as = as;
-  
-  if (type) {
-    link.type = type;
-  }
-  
   document.head.appendChild(link);
 };
